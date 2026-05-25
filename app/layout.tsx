@@ -40,7 +40,11 @@ export default function RootLayout({
   return (
     <ClerkProvider>
       <html lang="en">
-        <body style={{ margin: 0, padding: 0 }}>
+        <body
+          className="bg-white text-black"
+          style={{ margin: 0, padding: 0 }}
+          suppressHydrationWarning
+        >
           <Provider>
               {children}
           </Provider>
