@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { repositories } from "@/db/schema";
+import { eq } from "drizzle-orm";
 
 export async function POST(req: NextRequest) {
   const {
@@ -8,7 +9,7 @@ export async function POST(req: NextRequest) {
     userId,
     name,
     fullName,
-    private_,
+    isPrivate,
     htmlUrl,
     description,
     updatedAt,
@@ -24,7 +25,7 @@ export async function POST(req: NextRequest) {
       userId,
       name,
       fullName,
-      private: private_ ? 1 : 0,
+      private: isPrivate ? 1 : 0,
       htmlUrl,
       description,
       updatedAt: new Date(updatedAt),
@@ -35,4 +36,16 @@ export async function POST(req: NextRequest) {
     .returning();
 
   return NextResponse.json(result[0]);
+}
+
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const userId = searchParams.get("userId");
+
+  const result = await db
+    .select()
+    .from(repositories)
+    .where(eq(repositories.userId, Number(userId)));
+
+  return NextResponse.json(result);
 }
