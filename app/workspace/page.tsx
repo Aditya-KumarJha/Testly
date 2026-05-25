@@ -1,13 +1,22 @@
 import WorkSpaceBody from "@/components/custom/WorkSpaceBody";
-import React from "react";
+import type { Metadata } from "next";
 
-function page() {
-  return ( 
-  <div className="mx-auto max-w-4xl p-10">
-    <WorkSpaceBody />
-  </div>
+export const metadata: Metadata = {
+  title: "Workspace",
+  description: "Manage connected repositories and monitor AI-generated testing progress.",
+  robots: {
+    index: false,
+    follow: false,
+  },
+};
+
+function Page() {
+  return (
+    <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+      <WorkSpaceBody />
+    </div>
 
   );
 }
 
-export default page;
+export default Page;

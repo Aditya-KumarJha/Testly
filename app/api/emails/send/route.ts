@@ -1,23 +1,24 @@
-import { NextResponse } from 'next/server';
-import { resend } from '@/lib/resend';
+import { apiError, apiSuccess, getErrorMessage } from "@/lib/api";
+import { getResendClient } from "@/lib/resend";
 
 export async function POST(req: Request) {
   try {
     const { to, subject, html } = await req.json();
 
     if (!to || !subject) {
-      return NextResponse.json({ error: 'Missing to or subject' }, { status: 400 });
+      return apiError("Missing to or subject", 400);
     }
 
-    const data = await resend.emails.send({
-      from: 'Acme <onboarding@resend.dev>',
+    const data = await getResendClient().emails.send({
+      from: "Acme <onboarding@resend.dev>",
       to,
       subject,
-      html: html || '<p>Hello from your Next.js Boilerplate!</p>',
+      html: html || "<p>Hello from your Next.js Boilerplate!</p>",
     });
 
-    return NextResponse.json(data);
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return apiSuccess(data);
+  } catch (error) {
+    console.error("Failed to send email", error);
+    return apiError(getErrorMessage(error), 500);
   }
 }

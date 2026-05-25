@@ -1,9 +1,10 @@
 import { redirect } from "next/navigation";
+import { getRequiredEnv } from "@/lib/env";
 
 export async function GET() {
   const params = new URLSearchParams({
-    client_id: process.env.GITHUB_CLIENT_ID!,
-    redirect_uri: process.env.GITHUB_REDIRECT_URI!,
+    client_id: getRequiredEnv("GITHUB_CLIENT_ID"),
+    redirect_uri: getRequiredEnv("GITHUB_REDIRECT_URI"),
     scope: "repo read:user",
   });
 

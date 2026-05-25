@@ -3,7 +3,7 @@ import React from "react";
 
 function WorkspaceLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div>
+    <div className="min-h-screen">
       <WorkSpaceHeader />
       {children}
     </div>

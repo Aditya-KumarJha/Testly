@@ -1,4 +1,3 @@
-import type { Repo } from "./RepoDialog";
 import {
   Accordion,
   AccordionContent,
@@ -9,49 +8,104 @@ import Image from "next/image";
 import { Button } from "../ui/button";
 import {
   CheckCircle2,
+  ExternalLink,
+  GitBranch,
+  Globe,
   ListChecks,
+  Lock,
+  ShieldAlert,
   Sparkles,
   TrendingUp,
   XCircle,
 } from "lucide-react";
 import StatusCard from "./StatusCard";
+import type { SavedRepository } from "@/lib/types";
+import { formatRelativeDate } from "@/lib/utils";
 
-type props = {
-  repoList: Repo[];
+type Props = {
+  repoList: SavedRepository[];
 };
 
-function UserRepoList({ repoList }: props) {
+function UserRepoList({ repoList }: Props) {
   const totalTests = 120;
   const passedTests = 100;
   const failedTests = 20;
   const passRate =
     totalTests > 0 ? Math.round((passedTests / totalTests) * 100) : 0;
+
   return (
-    <div className="mt-10">
-      <h2 className="my-3 font-semibold">REPOSITORIES</h2>
-      {repoList.map((repo, index) => (
+    <div className="space-y-4">
+      {repoList.map((repo) => (
         <Accordion
           key={repo.id}
           type="single"
           collapsible
-          className="border px-5 rounded-xl"
+          className="glass-panel hero-ring rounded-[26px] border border-white/80 px-5 shadow-lg shadow-emerald-100/20"
         >
           <AccordionItem value={`repo-${repo.id}`}>
             <AccordionTrigger>
-              <div className="flex items-center gap-5">
-                <Image
-                  src={"/github.png"}
-                  alt="GitHub"
-                  width={30}
-                  height={30}
-                  className="inline-block mr-2"
-                />
-                <div className="flex flex-col items-start gap-1">
-                  <h2>{repo.fullName}</h2>
-                  <p className="text-sm text-gray-500">
-                    {repo.defaultBranch} {repo.language} Updated at{" "}
-                    {new Date(repo.updatedAt).toLocaleDateString()}
-                  </p>
+              <div className="flex flex-1 flex-col gap-4 pr-4 md:flex-row md:items-center md:justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                    <Image
+                      src={"/github.png"}
+                      alt="GitHub"
+                      width={26}
+                      height={26}
+                    />
+                  </div>
+                  <div className="flex flex-col items-start gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 className="text-base font-semibold text-slate-900 sm:text-lg">
+                        {repo.fullName}
+                      </h2>
+                      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
+                        {repo.private ? (
+                          <span className="inline-flex items-center gap-1">
+                            <Lock className="h-3 w-3" />
+                            Private
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1">
+                            <Globe className="h-3 w-3" />
+                            Public
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                    <p className="max-w-2xl text-sm text-slate-500">
+                      {repo.description || "No description available for this repository."}
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                      <span className="rounded-full bg-slate-100 px-2.5 py-1">
+                        <span className="inline-flex items-center gap-1">
+                          <GitBranch className="h-3 w-3" />
+                          {repo.defaultBranch}
+                        </span>
+                      </span>
+                      <span className="rounded-full bg-slate-100 px-2.5 py-1">
+                        {repo.language ?? "Unknown stack"}
+                      </span>
+                      <span className="rounded-full bg-slate-100 px-2.5 py-1">
+                        Owner: {repo.owner}
+                      </span>
+                      <span className="rounded-full bg-slate-100 px-2.5 py-1">
+                        {formatRelativeDate(repo.updatedAt)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 self-start md:self-center">
+                  <a
+                    className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 transition hover:border-emerald-200 hover:text-[#6D9846]"
+                    href={repo.htmlUrl}
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    View Repo
+                  </a>
                 </div>
               </div>
             </AccordionTrigger>
@@ -87,16 +141,48 @@ function UserRepoList({ repoList }: props) {
                   />
                 </div>
 
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border rounded-xl p-4 bg-gray-50">
+                <div className="grid gap-4 lg:grid-cols-[1.7fr_1fr]">
+                  <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4">
+                    <div className="flex items-start gap-3">
+                      <ShieldAlert className="mt-0.5 h-5 w-5 text-[#6D9846]" />
+                      <div>
+                        <h3 className="font-medium text-slate-900">
+                          Repository Readiness
+                        </h3>
+                        <p className="mt-1 text-sm leading-6 text-slate-600">
+                          Repository metadata is connected and ready for the next
+                          test-generation step. Branch, ownership, and update
+                          history are now visible here for faster triage.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
+                      Activity
+                    </p>
+                    <p className="mt-2 text-sm font-medium text-slate-800">
+                      {formatRelativeDate(repo.updatedAt)}
+                    </p>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Last synced branch: {repo.defaultBranch}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-col justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4 sm:flex-row sm:items-center">
                   <div>
-                    <h3 className="font-medium">Generate AI Test Cases</h3>
-                    <p className="text-sm text-gray-500 mt-1">
+                    <h3 className="font-medium text-slate-900">
+                      Generate AI Test Cases
+                    </h3>
+                    <p className="mt-1 text-sm text-slate-500">
                       Analyze this repository and generate automated test cases
                       using AI.
                     </p>
                   </div>
 
-                  <Button className="gap-2">
+                  <Button className="gap-2 rounded-full bg-[#6D9846] px-5 hover:bg-[#5d873d]">
                     <Sparkles className="h-4 w-4" />
                     Generate Test Cases
                   </Button>

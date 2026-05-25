@@ -10,14 +10,14 @@ function StatusCard({
   bgColor: string;
 }) {
   return (
-    <div className="border rounded-xl p-4 flex items-center justify-between bg-white">
+    <div className="glass-panel hero-ring flex items-center justify-between rounded-2xl border border-white/80 p-4">
       <div>
-        <p className="text-sm text-gray-500">{title}</p>
-        <h3 className="text-2xl font-semibold mt-1">{value}</h3>
+        <p className="text-sm font-medium text-slate-500">{title}</p>
+        <h3 className="mt-1 text-2xl font-semibold text-slate-900">{value}</h3>
       </div>
 
       <div
-        className={`h-10 w-10 rounded-full flex items-center justify-center ${bgColor}`}
+        className={`flex h-10 w-10 items-center justify-center rounded-full ${bgColor}`}
       >
         {icon}
       </div>
