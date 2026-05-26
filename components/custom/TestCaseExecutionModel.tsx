@@ -28,6 +28,9 @@ import {
   SlidersHorizontal,
   ChevronDown,
   ChevronUp,
+  Zap,
+  Copy,
+  FileDown,
 } from "lucide-react";
 import axios from "axios";
 import { toast } from "sonner";
@@ -62,6 +65,7 @@ export default function TestExecutionModal({
   const [isExecuting, setIsExecuting] = useState(false);
   const [results, setResults] = useState<Record<number, RunResult>>({});
   const [selectedDetailId, setSelectedDetailId] = useState<number | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
 
   // Advanced Options states
   const [executionMode, setExecutionMode] = useState<"cache" | "generate">(
@@ -69,6 +73,12 @@ export default function TestExecutionModal({
   );
   const [customPrompt, setCustomPrompt] = useState("");
   const [showOptions, setShowOptions] = useState(false);
+
+  const getPriorityCredits = (priority?: string) => {
+    if (priority === "high") return 15;
+    if (priority === "low") return 5;
+    return 10; // medium
+  };
 
   // Initialize states when testCases change or modal opens
   useEffect(() => {
@@ -142,7 +152,7 @@ export default function TestExecutionModal({
       setSelectedDetailId(tcId);
 
       const isRegenerating =
-        executionMode === "generate" || !results[tcId]?.browserbaseScript;
+        executionMode === "generate" || !currentTestCase.browserbaseScript;
 
       setResults((prev) => ({
         ...prev,
@@ -216,7 +226,7 @@ export default function TestExecutionModal({
     };
 
     runTest();
-  }, [isExecuting, currentIdx, testCases, baseUrl, executionMode, customPrompt, results]);
+  }, [isExecuting, currentIdx, testCases, baseUrl, executionMode, customPrompt, userContext]);
 
   const startExecution = () => {
     const trimmedBaseUrl = baseUrl.trim();
@@ -262,6 +272,175 @@ export default function TestExecutionModal({
   const currentSelectedTestCase = testCases.find(
     (tc) => tc.id === selectedDetailId,
   );
+
+  const selectedCount = testCases.length;
+  const hasExecutedResults = testCases.some(
+    (tc) => results[tc.id]?.status && results[tc.id]?.status !== "idle",
+  );
+
+  const copyText = async (text: string, label: string) => {
+    if (!text) {
+      toast.error(`No ${label} available to copy.`);
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success(`${label} copied to clipboard.`);
+    } catch (err) {
+      console.error("Failed to copy:", err);
+      toast.error(`Failed to copy ${label}.`);
+    }
+  };
+
+  const wrapText = (value: string, maxChars: number) => {
+    const lines: string[] = [];
+    const chunks = value.split("\n");
+
+    chunks.forEach((chunk) => {
+      if (!chunk) {
+        lines.push("");
+        return;
+      }
+
+      let current = "";
+      chunk.split(" ").forEach((word) => {
+        const next = current ? `${current} ${word}` : word;
+        if (next.length > maxChars) {
+          if (current) {
+            lines.push(current);
+            current = word;
+          } else {
+            lines.push(word);
+            current = "";
+          }
+        } else {
+          current = next;
+        }
+      });
+
+      if (current) {
+        lines.push(current);
+      }
+    });
+
+    return lines;
+  };
+
+  const exportResultsToPdf = async () => {
+    if (!hasExecutedResults) {
+      toast.error("Run at least one test case before exporting results.");
+      return;
+    }
+
+    try {
+      setIsExporting(true);
+      const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib");
+
+      const pdfDoc = await PDFDocument.create();
+      const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+      const margin = 48;
+      const lineHeight = 14;
+      const maxChars = 96;
+      const pageSize: [number, number] = [612, 792];
+
+      let page = pdfDoc.addPage(pageSize);
+      let y = page.getHeight() - margin;
+
+      const sanitizePdfText = (value: string) =>
+        value
+          .replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, "")
+          .replace(/[\u0000-\u0008\u000B-\u001F\u007F]/g, "");
+
+      const addLine = (text: string, isBold = false) => {
+        const safeText = sanitizePdfText(text);
+        if (y < margin) {
+          page = pdfDoc.addPage(pageSize);
+          y = page.getHeight() - margin;
+        }
+
+        page.drawText(safeText, {
+          x: margin,
+          y,
+          size: 11,
+          font: isBold ? boldFont : font,
+          color: rgb(0.15, 0.15, 0.15),
+        });
+        y -= lineHeight;
+      };
+
+      addLine("Testly AI - Test Execution Report", true);
+      addLine(`Generated: ${new Date().toLocaleString()}`);
+      addLine(`Target URL: ${baseUrl || "Not provided"}`);
+      addLine(`Selected test cases: ${selectedCount}`);
+      addLine(" ");
+
+      testCases.forEach((tc, index) => {
+        const result = results[tc.id];
+        const status = result?.status || "idle";
+        const logs = result?.logs || [];
+        const script = result?.browserbaseScript || "";
+
+        addLine(`${index + 1}. ${tc.title}`, true);
+        wrapText(`Description: ${tc.description || "-"}`, maxChars).forEach(
+          (line) => addLine(line),
+        );
+        wrapText(`Expected: ${tc.expectedResult || "-"}`, maxChars).forEach(
+          (line) => addLine(line),
+        );
+        addLine(`Status: ${status}`);
+        if (result?.sessionUrl) {
+          wrapText(`Recording: ${result.sessionUrl}`, maxChars).forEach(
+            (line) => addLine(line),
+          );
+        }
+
+        if (script) {
+          addLine("Generated Script:", true);
+          wrapText(script, maxChars).forEach((line) => addLine(line));
+        }
+
+        if (logs.length > 0) {
+          addLine("Console Output:", true);
+          logs.forEach((log) => {
+            wrapText(log, maxChars).forEach((line) => addLine(line));
+          });
+        }
+
+        if (result?.error) {
+          addLine(`Error: ${result.error}`);
+        }
+
+        addLine(" ");
+      });
+
+      const pdfBytes = await pdfDoc.save();
+      const bytes = pdfBytes instanceof Uint8Array
+        ? pdfBytes
+        : new Uint8Array(pdfBytes);
+      const safeBuffer = bytes.slice().buffer;
+      const blob = new Blob([safeBuffer], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      const fileName = `testly-results-${Date.now()}.pdf`;
+
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+
+      toast.success("PDF export generated.");
+    } catch (err) {
+      console.error("Failed to export PDF:", err);
+      toast.error("Failed to export PDF.");
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -388,9 +567,14 @@ export default function TestExecutionModal({
         <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-5 overflow-hidden">
           {/* Left: Test Cases Queue List */}
           <div className="md:col-span-1 border rounded-xl overflow-y-auto bg-gray-50/50 p-3 flex flex-col gap-2 shadow-xs">
-            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider px-2 mb-1">
-              Execution Queue
-            </h3>
+            <div className="flex items-center justify-between px-2 mb-1">
+              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">
+                Execution Queue
+              </h3>
+              <Badge variant="secondary" className="text-[10px]">
+                {selectedCount} selected
+              </Badge>
+            </div>
             {testCases.map((tc, index) => {
               const res = results[tc.id];
               const isActive = selectedDetailId === tc.id;
@@ -418,12 +602,18 @@ export default function TestExecutionModal({
                     {tc.description}
                   </p>
                   <div className="flex justify-between items-center">
-                    <Badge
-                      variant="outline"
-                      className="text-[10px] font-mono capitalize"
-                    >
-                      {tc.type}
-                    </Badge>
+                    <div className="flex gap-1.5 items-center">
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] font-mono capitalize"
+                      >
+                        {tc.type}
+                      </Badge>
+                      <span className="inline-flex items-center gap-0.5 text-[9px] text-amber-700 bg-amber-50 border border-amber-200/60 px-1.5 py-0.5 rounded-full font-medium shadow-xs">
+                        <Zap className="h-2.5 w-2.5 fill-current text-amber-500 animate-pulse" />
+                        {getPriorityCredits(tc.priority)} credits
+                      </span>
+                    </div>
                     <StatusBadge
                       status={res?.status || "idle"}
                       isRunning={isRunning}
@@ -472,6 +662,21 @@ export default function TestExecutionModal({
                           <Code className="h-3.5 w-3.5 text-primary" />{" "}
                           Generated Playwright Code
                         </span>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8 hover:bg-transparent"
+                          onClick={() =>
+                            copyText(
+                              currentSelectedResult.browserbaseScript || "",
+                              "Playwright code",
+                            )
+                          }
+                          aria-label="Copy Playwright code"
+                        >
+                          <Copy className="h-4 w-4" />
+                        </Button>
                       </div>
                       <pre className="p-3 bg-gray-950 text-emerald-400 font-mono text-[11px] leading-relaxed overflow-x-auto max-h-36">
                         {currentSelectedResult.browserbaseScript}
@@ -486,12 +691,29 @@ export default function TestExecutionModal({
                         <Terminal className="h-3.5 w-3.5" /> Console Terminal
                         Output
                       </span>
-                      <Badge
-                        variant="secondary"
-                        className="bg-gray-800 text-gray-300 border-none text-[10px] uppercase"
-                      >
-                        {currentSelectedResult?.status || "idle"}
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8 text-gray-200 hover:text-gray-100 hover:bg-transparent"
+                          onClick={() =>
+                            copyText(
+                              (currentSelectedResult?.logs || []).join("\n"),
+                              "terminal output",
+                            )
+                          }
+                          aria-label="Copy terminal output"
+                        >
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                        <Badge
+                          variant="secondary"
+                          className="bg-gray-800 text-gray-300 border-none text-[10px] uppercase"
+                        >
+                          {currentSelectedResult?.status || "idle"}
+                        </Badge>
+                      </div>
                     </div>
                     <div className="flex-1 p-3 bg-gray-950 font-mono text-[11px] text-gray-300 overflow-y-auto flex flex-col gap-1.5 select-text">
                       {currentSelectedResult?.logs.map((log, lIdx) => (
@@ -538,6 +760,17 @@ export default function TestExecutionModal({
 
         {/* Footer Controls */}
         <div className="border-t pt-4 flex justify-end gap-3 shrink-0">
+          <Button
+            variant="outline"
+            onClick={exportResultsToPdf}
+            disabled={!hasExecutedResults || isExporting}
+            className="h-10 font-medium px-5 gap-2"
+          >
+            <FileDown className="h-4 w-4" />
+            {isExporting
+              ? "Exporting..."
+              : `Export ${selectedCount} Case${selectedCount === 1 ? "" : "s"} PDF`}
+          </Button>
           <Button
             variant="outline"
             onClick={onClose}

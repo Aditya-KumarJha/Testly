@@ -1,4 +1,4 @@
-import { Play, RefreshCw } from "lucide-react";
+import { Play, RefreshCw, Zap, Sparkles, Loader2 } from "lucide-react";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import type { TestCase } from "@/lib/types";
@@ -11,14 +11,22 @@ type Props = {
   testCases: TestCase[];
   onReload: (repoId: string) => void;
   onRunSelected: (testCases: TestCase[]) => void;
+  onRegenerate?: () => void;
+  generating?: boolean;
 };
 
-function TestCaseList({ testCases, onReload, onRunSelected }: Props) {
+function TestCaseList({ testCases, onReload, onRunSelected, onRegenerate, generating }: Props) {
   const [selectedTestCases, setSelectedTestCases] = useState<TestCase[]>([]);
 
   useEffect(() => {
     setSelectedTestCases([]);
   }, [testCases]);
+
+  const getPriorityCredits = (priority?: string) => {
+    if (priority === "high") return 15;
+    if (priority === "low") return 5;
+    return 10; // medium
+  };
 
   const handleSelectedTestCase = (
     checked: boolean | string,
@@ -39,19 +47,37 @@ function TestCaseList({ testCases, onReload, onRunSelected }: Props) {
         <h2 className="text-2xl font-semibold text-primary">
           Generated Test Cases
         </h2>
-        <Button
-          size={"sm"}
-          variant={"outline"}
-          onClick={() => {
-            const repoId = testCases[0]?.repoId;
-            if (repoId) {
-              toast("Refreshing test cases...");
-              onReload(repoId);
-            }
-          }}
-        >
-          <RefreshCw className="w-4 h-4 mr-2" /> Refresh
-        </Button>
+        <div className="flex gap-2">
+          {onRegenerate && (
+            <Button
+              size={"sm"}
+              className="rounded-lg bg-[#6D9846] hover:bg-[#5d873d] text-white flex gap-1.5 items-center shadow-xs"
+              disabled={generating}
+              onClick={onRegenerate}
+            >
+              {generating ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Sparkles className="w-3.5 h-3.5" />
+              )}
+              {generating ? "Regenerating..." : "Regenerate Cases"}
+            </Button>
+          )}
+          <Button
+            size={"sm"}
+            variant={"outline"}
+            disabled={generating}
+            onClick={() => {
+              const repoId = testCases[0]?.repoId;
+              if (repoId) {
+                toast("Refreshing test cases...");
+                onReload(repoId);
+              }
+            }}
+          >
+            <RefreshCw className="w-4 h-4 mr-2" /> Refresh
+          </Button>
+        </div>
       </div>
       <div className="border rounded-md mt-3">
         {testCases.map((testCase, index) => (
@@ -77,6 +103,10 @@ function TestCaseList({ testCases, onReload, onRunSelected }: Props) {
             </div>
             <div className="flex gap-4 items-center">
               <Badge variant={"secondary"}>{testCase?.type}</Badge>
+              <Badge variant="outline" className="flex items-center gap-1 border-amber-200 bg-amber-50/50 text-amber-700 font-medium">
+                <Zap className="h-3 w-3 fill-current animate-pulse text-amber-500" />
+                {getPriorityCredits(testCase?.priority)} credits
+              </Badge>
               {testCase?.status == "failed" && (
                 <Badge variant={"destructive"} className="text-red-200 font-normal">
                   {testCase?.status}

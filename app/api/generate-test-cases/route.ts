@@ -1,7 +1,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { TestCasesTable, users } from "@/db/schema";
 import {
@@ -72,6 +72,44 @@ type GeneratedTestCase = {
   targetFiles?: string[];
   expectedResult?: string;
 };
+
+function normalizeTargetRoute(route?: string | null) {
+  if (!route) {
+    return "/";
+  }
+
+  let value = route.trim();
+  if (!value || value === "/") {
+    return "/";
+  }
+
+  if (value.startsWith("http://") || value.startsWith("https://")) {
+    try {
+      const url = new URL(value);
+      value = `${url.pathname}${url.search}${url.hash}` || "/";
+    } catch {
+      value = "/";
+    }
+  }
+
+  if (value === "index" || value === "/index") {
+    return "/";
+  }
+
+  if (value.startsWith("#")) {
+    return `/${value}`;
+  }
+
+  if (!value.startsWith("/")) {
+    value = `/${value}`;
+  }
+
+  if (value.endsWith("/index")) {
+    value = value.replace(/\/index$/, "/");
+  }
+
+  return value;
+}
 
 function getAiClient() {
   return new GoogleGenAI({
@@ -183,6 +221,7 @@ export async function POST(req: NextRequest) {
       owner?: unknown;
       repo?: unknown;
       branch?: unknown;
+      regenerate?: unknown;
     }>(req);
 
     if (errorResponse || !data) {
@@ -196,6 +235,7 @@ export async function POST(req: NextRequest) {
     const owner = toTrimmedString(data.owner);
     const repo = toTrimmedString(data.repo);
     const branch = toTrimmedString(data.branch) || "main";
+    const regenerate = Boolean(data.regenerate);
 
     if (!githubToken) {
       return apiError("GitHub authentication token is missing or expired", 401);
@@ -219,7 +259,7 @@ export async function POST(req: NextRequest) {
       return apiError("User not found", 404);
     }
 
-    const REQUIRED_CREDITS = 10;
+    const REQUIRED_CREDITS = 15; // Minimum required for at least one high priority case
     if (user.credits < REQUIRED_CREDITS) {
       return apiError("Not enough credits. Please purchase more credits first.", 402);
     }
@@ -297,6 +337,7 @@ Important rules:
 - Only use file paths that exist in the repository context.
 - Do not invent fake target files.
 - If route is unclear, infer from Next.js app/page structure.
+- Use "/" for the homepage. Do not use "/index" unless the app explicitly serves that path.
 - Keep description short, only one line.
 - Return only valid JSON.
 `;
@@ -360,6 +401,24 @@ Important rules:
       return apiError("Gemini did not generate any valid test cases", 400);
     }
 
+    if (regenerate) {
+      if (repoId) {
+        await db
+          .delete(TestCasesTable)
+          .where(eq(TestCasesTable.repoId, repoId));
+      } else {
+        await db
+          .delete(TestCasesTable)
+          .where(
+            and(
+              eq(TestCasesTable.repoName, repo),
+              eq(TestCasesTable.repoOwner, owner),
+              eq(TestCasesTable.userId, String(userIdNum))
+            )
+          );
+      }
+    }
+
     const insertedTestCases = await db
       .insert(TestCasesTable)
       .values(
@@ -373,7 +432,7 @@ Important rules:
           description: toTrimmedString(testCase.description),
           type: toTrimmedString(testCase.type),
           priority: toTrimmedString(testCase.priority),
-          targetRoute: toOptionalTrimmedString(testCase.targetRoute),
+          targetRoute: normalizeTargetRoute(testCase.targetRoute),
           targetFiles: Array.isArray(testCase.targetFiles)
             ? testCase.targetFiles.filter((file) => validFiles.some((item) => item.path === file))
             : [],
@@ -383,7 +442,17 @@ Important rules:
       )
       .returning();
 
-    const creditsToDeduct = insertedTestCases.length * 10;
+    let creditsToDeduct = 0;
+    insertedTestCases.forEach((tc) => {
+      if (tc.priority === "high") {
+        creditsToDeduct += 15;
+      } else if (tc.priority === "low") {
+        creditsToDeduct += 5;
+      } else {
+        creditsToDeduct += 10;
+      }
+    });
+
     const newCredits = Math.max(0, user.credits - creditsToDeduct);
     await db
       .update(users)

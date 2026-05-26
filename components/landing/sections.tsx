@@ -131,7 +131,7 @@ export const NavBar: FC<{ isSignedIn: boolean; scrolled: boolean }> = ({
 
       <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
         <Link
-          href={isSignedIn ? "/workspace" : "/sign-in"}
+          href={isSignedIn ? "/workspace/pricing" : "/sign-in"}
           style={{
             fontFamily: "'Geist', sans-serif",
             fontSize: 13,
@@ -140,7 +140,7 @@ export const NavBar: FC<{ isSignedIn: boolean; scrolled: boolean }> = ({
             padding: "6px 12px",
           }}
         >
-          {isSignedIn ? "Workspace" : "Sign in"}
+          {isSignedIn ? "Pricing" : "Sign in"}
         </Link>
         <Link
           href={isSignedIn ? "/workspace" : "/sign-up"}

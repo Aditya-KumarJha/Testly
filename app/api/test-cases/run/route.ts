@@ -56,6 +56,88 @@ function sanitizeGeneratedCode(code: string) {
     .trim();
 }
 
+function normalizeBaseUrl(url: string) {
+  return url.replace(/\/$/, "");
+}
+
+function normalizeTargetRoute(route?: string | null) {
+  if (!route) {
+    return "/";
+  }
+
+  let value = route.trim();
+  if (!value || value === "/") {
+    return "/";
+  }
+
+  if (value.startsWith("http://") || value.startsWith("https://")) {
+    try {
+      const url = new URL(value);
+      value = `${url.pathname}${url.search}${url.hash}` || "/";
+    } catch {
+      value = "/";
+    }
+  }
+
+  if (value === "index" || value === "/index") {
+    return "/";
+  }
+
+  if (value.startsWith("#")) {
+    return `/${value}`;
+  }
+
+  if (!value.startsWith("/")) {
+    value = `/${value}`;
+  }
+
+  if (value.endsWith("/index")) {
+    value = value.replace(/\/index$/, "/");
+  }
+
+  return value;
+}
+
+function patchScriptTargetUrl(options: {
+  script: string;
+  baseUrl: string;
+  originalRoute?: string | null;
+  normalizedBaseUrl: string;
+  normalizedRoute: string;
+}) {
+  const { script, baseUrl, originalRoute, normalizedBaseUrl, normalizedRoute } =
+    options;
+  let next = script;
+
+  const trimmedOriginalRoute = originalRoute?.trim();
+  if (trimmedOriginalRoute) {
+    const originalUrl = `${baseUrl}${trimmedOriginalRoute}`;
+    const normalizedUrl = `${normalizedBaseUrl}${normalizedRoute}`;
+    if (originalUrl !== normalizedUrl) {
+      next = next.split(originalUrl).join(normalizedUrl);
+    }
+
+    const baseWithNoSlash = normalizeBaseUrl(baseUrl);
+    const routeWithSlash = trimmedOriginalRoute.startsWith("/")
+      ? trimmedOriginalRoute
+      : `/${trimmedOriginalRoute}`;
+    const originalAltUrl = `${baseWithNoSlash}${routeWithSlash}`;
+    if (originalAltUrl !== normalizedUrl) {
+      next = next.split(originalAltUrl).join(normalizedUrl);
+    }
+  }
+
+  if (normalizedRoute === "/") {
+    next = next
+      .split(`${normalizedBaseUrl}/index`)
+      .join(`${normalizedBaseUrl}/`)
+      .split(`${normalizedBaseUrl}//index`)
+      .join(`${normalizedBaseUrl}/`);
+  }
+
+  return next;
+}
+
 async function readGithubFile({
   owner,
   repo,
@@ -148,12 +230,18 @@ export async function POST(req: NextRequest) {
       return apiError("User not found", 404);
     }
 
-    const REQUIRED_CREDITS = 10;
-    if (user.credits < REQUIRED_CREDITS) {
+    let requiredCredits = 10;
+    if (testCase.priority === "high") {
+      requiredCredits = 15;
+    } else if (testCase.priority === "low") {
+      requiredCredits = 5;
+    }
+
+    if (user.credits < requiredCredits) {
       return apiError("Not enough credits. Please purchase more credits first.", 402);
     }
 
-    const newCredits = Math.max(0, user.credits - REQUIRED_CREDITS);
+    const newCredits = Math.max(0, user.credits - requiredCredits);
     await db
       .update(users)
       .set({ credits: newCredits })
@@ -177,6 +265,17 @@ export async function POST(req: NextRequest) {
         .from(repositories)
         .where(eq(repositories.fullName, `${testCase.repoOwner}/${testCase.repoName}`));
       repoRecord = repository ?? null;
+    }
+
+    const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
+    const normalizedTargetRoute = normalizeTargetRoute(testCase.targetRoute);
+    const originalTargetRoute = testCase.targetRoute;
+
+    if (normalizedTargetRoute !== (originalTargetRoute ?? "")) {
+      await db
+        .update(TestCasesTable)
+        .set({ targetRoute: normalizedTargetRoute })
+        .where(eq(TestCasesTable.id, testCase.id));
     }
 
     let scriptText = testCase.browserbaseScript;
@@ -233,11 +332,11 @@ ${file.content}
 
       const prompt = `
 You are an expert QA automation engineer.
-Your task is to write a Playwright Node.js script body that executes a test case on an application running at URL: "${baseUrl}".
+Your task is to write a Playwright Node.js script body that executes a test case on an application running at URL: "${normalizedBaseUrl}".
 Test Case Details:
 Title: ${testCase.title}
 Description: ${testCase.description}
-Target Route: ${testCase.targetRoute || "/"}
+Target Route: ${normalizedTargetRoute}
 Expected Result: ${testCase.expectedResult}
 ${globalIns}
 ${tempIns}
@@ -259,7 +358,7 @@ function assert(condition, message) {
 Rules for your code:
 DO NOT import playwright, browserbase, assert, or any other modules.
 Navigate to the target route using:
-\`await page.goto('${baseUrl}${testCase.targetRoute || ""}', { waitUntil: 'load', timeout: 15000 })\`
+\`await page.goto('${normalizedBaseUrl}${normalizedTargetRoute}', { waitUntil: 'load', timeout: 15000 })\`
 followed by a short settle wait: \`await page.waitForTimeout(1000)\`.
 Carefully analyze the Source File Context provided to find the EXACT forms, inputs, placeholders, buttons, and elements.
 Apply extreme selector resilience and always wait for elements before interacting with them.
@@ -300,6 +399,14 @@ DO NOT include any explanation.
     if (!scriptText) {
       return apiError("No automation script is available for this test case", 500);
     }
+
+    scriptText = patchScriptTargetUrl({
+      script: scriptText,
+      baseUrl,
+      originalRoute: originalTargetRoute,
+      normalizedBaseUrl,
+      normalizedRoute: normalizedTargetRoute,
+    });
 
     const logs: string[] = [];
     const customConsole = {

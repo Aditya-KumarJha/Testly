@@ -20,6 +20,7 @@ import {
   Sparkles,
   TrendingUp,
   XCircle,
+  Zap,
 } from "lucide-react";
 import StatusCard from "./StatusCard";
 import type { SavedRepository, TestCase } from "@/lib/types";
@@ -60,7 +61,7 @@ function UserRepoList({ repoList, setReload }: Props) {
     passRate: 0,
   });
 
-  const handleGenerateTestCases = async (repo: SavedRepository) => {
+  const handleGenerateTestCases = async (repo: SavedRepository, regenerate = false) => {
     setGeneratingRepoId(repo.id);
     try {
       await axios.post("/api/generate-test-cases", {
@@ -69,6 +70,7 @@ function UserRepoList({ repoList, setReload }: Props) {
         owner: repo?.owner,
         repo: repo?.name,
         branch: repo?.defaultBranch,
+        regenerate,
       });
 
       if (repo?.repoId) {
@@ -298,17 +300,19 @@ function UserRepoList({ repoList, setReload }: Props) {
                   <Loader2Icon className="h-4 w-4 animate-spin" />
                   <h2>Loading test cases...</h2>
                 </div>
-              ) : testCases.length > 0 ? (
+              ) : (
                 <TestCaseList
                   testCases={testCases}
                   onReload={(repoId: string) => getTestCases(repoId)}
+                  onRegenerate={() => handleGenerateTestCases(repo, true)}
+                  generating={generatingRepoId === repo.id}
                   onRunSelected={(selected) => {
                     setRunnerTestCases(selected);
                     setRunnerRepo(repo);
                     setIsRunnerOpen(true);
                   }}
                 />
-              ) : null}
+              )}
 
               {testCases.length === 0 ? (
                 <div className="animated-sheen flex flex-col justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4 sm:flex-row sm:items-center">
@@ -318,9 +322,12 @@ function UserRepoList({ repoList, setReload }: Props) {
                         ? "Generating Test Cases..."
                         : "Generate AI Test Cases?"}
                     </h3>
-                    <p className="mt-1 text-sm text-slate-500">
-                      Analyze this repository and generate automated test cases
-                      using AI.
+                    <p className="mt-1 text-sm text-slate-500 flex flex-wrap items-center gap-2">
+                      <span>Analyze this repository and generate automated test cases using AI.</span>
+                      <span className="inline-flex items-center gap-1 text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-0.5 rounded-full font-medium shadow-xs">
+                        <Zap className="h-3 w-3 fill-current text-amber-500 animate-pulse" />
+                        Cost per case: Low 5, Medium 10, High 15 credits
+                      </span>
                     </p>
                   </div>
 

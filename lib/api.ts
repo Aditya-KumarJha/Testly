@@ -54,7 +54,10 @@ export function toInteger(value: unknown) {
 }
 
 export function toTrimmedString(value: unknown) {
-  return typeof value === "string" ? value.trim() : "";
+  if (value === null || value === undefined) {
+    return "";
+  }
+  return typeof value === "string" ? value.trim() : String(value).trim();
 }
 
 export function toOptionalTrimmedString(value: unknown) {
