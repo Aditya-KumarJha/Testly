@@ -11,7 +11,11 @@ import axios from "axios";
 import RepoDialog from "./RepoDialog";
 import UserRepoList from "./UserRepoList";
 import type { GitHubProfile, SavedRepository } from "@/lib/types";
-import { getClientCache, setClientCache } from "@/lib/client-cache";
+import {
+  getClientCache,
+  removeClientCache,
+  setClientCache,
+} from "@/lib/client-cache";
 import { toast } from "sonner";
 import {
   FolderKanban,
@@ -141,10 +145,18 @@ function WorkSpaceBody() {
       return response.data.data;
     } catch (error) {
       console.error("Failed to load GitHub profile", error);
+      if (axios.isAxiosError(error) && error.response?.status === 401) {
+        setIsGithubConnected(false);
+        removeClientCache(GITHUB_CONNECTION_CACHE_KEY);
+        removeClientCache(GITHUB_PROFILE_CACHE_KEY);
+        setGithubProfile(null);
+        toast.error("GitHub session expired. Please reconnect.");
+      } else {
+        toast.error("Unable to load GitHub profile details.");
+      }
       if (!cachedProfile) {
         setGithubProfile(null);
       }
-      toast.error("Unable to load GitHub profile details.");
       return null;
     }
   };

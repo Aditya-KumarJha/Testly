@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { NextResponse } from "next/server";
 import { apiError, apiSuccess } from "@/lib/api";
 import type { GitHubProfile } from "@/lib/types";
 
@@ -19,6 +20,21 @@ export async function GET() {
     });
 
     if (!response.ok) {
+      if (response.status === 401 || response.status === 403) {
+        const errorResponse = NextResponse.json(
+          { error: "GitHub token expired or revoked" },
+          { status: 401 },
+        );
+        errorResponse.cookies.set("gh_token", "", {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production",
+          maxAge: 0,
+          path: "/",
+          sameSite: "lax",
+        });
+        return errorResponse;
+      }
+
       return apiError("Failed to fetch GitHub profile", response.status);
     }
 
