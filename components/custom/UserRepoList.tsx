@@ -30,6 +30,7 @@ import { UserDetailContext } from "@/context/UserDetailContext";
 import TestCaseList from "./TestCaseList";
 import RepoSettings from "./RepoSettings";
 import TestExecutionModal from "./TestCaseExecutionModel";
+import { toast } from "sonner";
 
 type Props = {
   repoList: SavedRepository[];
@@ -46,7 +47,7 @@ type StatusData = {
 
 function UserRepoList({ repoList, setReload }: Props) {
   const userContext = useContext(UserDetailContext);
-  const [loading, setLoading] = useState(false);
+  const [generatingRepoId, setGeneratingRepoId] = useState<number | null>(null);
   const [testCasesLoading, setTestCasesLoading] = useState(false);
   const [testCases, setTestCases] = useState<TestCase[]>([]);
   const [isRunnerOpen, setIsRunnerOpen] = useState(false);
@@ -60,9 +61,9 @@ function UserRepoList({ repoList, setReload }: Props) {
   });
 
   const handleGenerateTestCases = async (repo: SavedRepository) => {
-    setLoading(true);
+    setGeneratingRepoId(repo.id);
     try {
-      const result = await axios.post("/api/generate-test-cases", {
+      await axios.post("/api/generate-test-cases", {
         userId: userContext?.userDetail?.id,
         repoId: repo?.repoId,
         owner: repo?.owner,
@@ -70,12 +71,15 @@ function UserRepoList({ repoList, setReload }: Props) {
         branch: repo?.defaultBranch,
       });
 
-      console.log("Test case generation result:", result.data);
       if (repo?.repoId) {
         await getTestCases(String(repo.repoId));
       }
+      toast.success("Test cases generated successfully.");
+    } catch (error) {
+      console.error("Failed to generate test cases", error);
+      toast.error("Unable to generate test cases right now.");
     } finally {
-      setLoading(false);
+      setGeneratingRepoId(null);
     }
   };
 
@@ -83,27 +87,42 @@ function UserRepoList({ repoList, setReload }: Props) {
     setTestCasesLoading(true);
     setTestCases([]);
 
-    const result = await axios.get(`/api/test-cases?repoId=${repoId}`);
+    try {
+      const result = await axios.get<{ data: TestCase[] }>(
+        `/api/test-cases?repoId=${repoId}`,
+      );
 
-    const userTestCases = result.data as TestCase[];
-    const passedTests = userTestCases.filter((test) => test.status === "passed")
-      .length;
-    const failedTests = userTestCases.filter((test) => test.status === "failed")
-      .length;
-    const passRate =
-      userTestCases.length > 0
-        ? Math.round((passedTests / userTestCases.length) * 100)
-        : 0;
+      const userTestCases = result.data.data;
+      const passedTests = userTestCases.filter((test) => test.status === "passed")
+        .length;
+      const failedTests = userTestCases.filter((test) => test.status === "failed")
+        .length;
+      const passRate =
+        userTestCases.length > 0
+          ? Math.round((passedTests / userTestCases.length) * 100)
+          : 0;
 
-    setStatusData({
-      totalTests: result.data.length,
-      passedTests: passedTests,
-      failedTests: failedTests,
-      passRate: passRate,
-    });
-    
-    setTestCases(result.data);
-    setTestCasesLoading(false);
+      setStatusData({
+        totalTests: userTestCases.length,
+        passedTests,
+        failedTests,
+        passRate,
+      });
+
+      setTestCases(userTestCases);
+    } catch (error) {
+      console.error("Failed to fetch test cases", error);
+      setStatusData({
+        totalTests: 0,
+        passedTests: 0,
+        failedTests: 0,
+        passRate: 0,
+      });
+      setTestCases([]);
+      toast.error("Unable to load test cases.");
+    } finally {
+      setTestCasesLoading(false);
+    }
   };
 
   return (
@@ -122,7 +141,7 @@ function UserRepoList({ repoList, setReload }: Props) {
         <AccordionItem
           key={repo.id}
           value={repo.repoId.toString()}
-          className="glass-panel hero-ring rounded-[26px] border border-white/80 px-5 shadow-lg shadow-emerald-100/20"
+          className="glass-panel hero-ring hover-lift rounded-[26px] border border-white/80 px-5 shadow-lg shadow-emerald-100/20"
         >
           <AccordionTrigger>
             <div className="flex flex-1 flex-col gap-4 pr-4 md:flex-row md:items-center md:justify-between">
@@ -193,11 +212,13 @@ function UserRepoList({ repoList, setReload }: Props) {
           </AccordionTrigger>
           <AccordionContent>
             <div className="pt-4 space-y-5">
-              <div className="bg-gray-50 p-3 border rounded-xl flex justify-between items-center">
+              <div className="flex items-center justify-between rounded-xl border bg-gray-50 p-3">
                 <div className="flex gap-3 items-center">
                   <Link2Icon className="h-5 w-5 text-primary" />
                   <h2>Target Domain: </h2>
-                  <h2 className="bg-white p-1 px-2 border rounded-md text-primary font-medium">{repo?.targetDomain}</h2>
+                  <h2 className="rounded-md border bg-white p-1 px-2 font-medium text-primary">
+                    {repo?.targetDomain || "Not configured"}
+                  </h2>
                 </div>
                 <RepoSettings repo={repo} setReload={setReload} />
               </div>
@@ -248,7 +269,7 @@ function UserRepoList({ repoList, setReload }: Props) {
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                <div className="hover-lift rounded-2xl border border-slate-200 bg-white p-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
                     Activity
                   </p>
@@ -279,10 +300,10 @@ function UserRepoList({ repoList, setReload }: Props) {
               ) : null}
 
               {testCases.length === 0 ? (
-                <div className="flex flex-col justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4 sm:flex-row sm:items-center">
+                <div className="animated-sheen flex flex-col justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4 sm:flex-row sm:items-center">
                   <div>
                     <h3 className="font-medium text-slate-900">
-                      {loading
+                      {generatingRepoId === repo.id
                         ? "Generating Test Cases..."
                         : "Generate AI Test Cases?"}
                     </h3>
@@ -295,9 +316,9 @@ function UserRepoList({ repoList, setReload }: Props) {
                   <Button
                     onClick={() => handleGenerateTestCases(repo)}
                     className="gap-2 rounded-full bg-[#6D9846] px-5 hover:bg-[#5d873d]"
-                    disabled={loading}
+                    disabled={generatingRepoId === repo.id}
                   >
-                    {loading ? (
+                    {generatingRepoId === repo.id ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
                       <Sparkles className="h-4 w-4" />

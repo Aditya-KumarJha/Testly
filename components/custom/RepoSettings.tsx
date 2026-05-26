@@ -15,6 +15,7 @@ import { DialogClose } from "@radix-ui/react-dialog";
 import type { SavedRepository } from "@/lib/types";
 import { useState } from "react";
 import axios from "axios";
+import { toast } from "sonner";
 
 type Props = {
   repo: SavedRepository;
@@ -23,35 +24,48 @@ type Props = {
 
 function RepoSettings({ repo, setReload }: Props) {
   const [open, setOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [repoSettings, setRepoSettings] = useState({
     targetDomain: repo.targetDomain || "",
     globalInstructions: repo.globalInstructions || "",
   });
 
   const handleSaveSettings = async () => {
-    await axios.post("/api/user-repo/settings", {
-      repoId: repo.repoId,
-      targetDomain: repoSettings.targetDomain,
-      globalInstructions: repoSettings.globalInstructions,
-    });
+    setIsSaving(true);
 
-    setReload();
-    setOpen(false);
+    try {
+      await axios.post("/api/user-repo/settings", {
+        repoId: repo.repoId,
+        targetDomain: repoSettings.targetDomain,
+        globalInstructions: repoSettings.globalInstructions,
+      });
+
+      setReload();
+      setOpen(false);
+      toast.success("Project configuration updated.");
+    } catch (error) {
+      console.error("Failed to update repository settings", error);
+      toast.error("Unable to update project configuration.");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button>
-          <Settings2 className="h-4 w-4 mr-2" />
+        <Button className="rounded-full border border-emerald-200 bg-white text-slate-700 shadow-none hover:bg-emerald-50">
+          <Settings2 className="mr-2 h-4 w-4" />
           Project Configuration
         </Button>
       </DialogTrigger>
-      <DialogContent onOpenAutoFocus={(event) => event.preventDefault()}>
+      <DialogContent
+        className="border-white/80 bg-white/95"
+        onOpenAutoFocus={(event) => event.preventDefault()}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            {" "}
-            <Settings className="h-4 w-4 mr-2 text-primary" />
+            <Settings className="mr-2 h-4 w-4 text-primary" />
             Project / Repository Settings
           </DialogTitle>
           <DialogDescription>
@@ -108,7 +122,9 @@ function RepoSettings({ repo, setReload }: Props) {
           <DialogClose asChild>
             <Button variant={"outline"}>Cancel</Button>
           </DialogClose>
-          <Button onClick={handleSaveSettings}>Save Configuration</Button>
+          <Button disabled={isSaving} onClick={handleSaveSettings}>
+            {isSaving ? "Saving..." : "Save Configuration"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

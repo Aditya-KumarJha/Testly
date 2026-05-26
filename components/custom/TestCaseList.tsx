@@ -5,6 +5,7 @@ import type { TestCase } from "@/lib/types";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useEffect, useState } from "react";
 import TestCaseSettingDialog from "./TestCaseSettingDialog";
+import { toast } from "sonner";
 
 type Props = {
   testCases: TestCase[];
@@ -24,10 +25,10 @@ function TestCaseList({ testCases, onReload, onRunSelected }: Props) {
     testCase: TestCase,
   ) => {
     if (checked) {
-      setSelectedTestCases((prev: any) => [...(prev || []), testCase]);
+      setSelectedTestCases((prev) => [...prev, testCase]);
     } else {
-      setSelectedTestCases((prev: any) =>
-        prev?.filter((t: TestCase) => t.id !== testCase.id),
+      setSelectedTestCases((prev) =>
+        prev.filter((t) => t.id !== testCase.id),
       );
     }
   };
@@ -44,6 +45,7 @@ function TestCaseList({ testCases, onReload, onRunSelected }: Props) {
           onClick={() => {
             const repoId = testCases[0]?.repoId;
             if (repoId) {
+              toast("Refreshing test cases...");
               onReload(repoId);
             }
           }}
@@ -54,13 +56,13 @@ function TestCaseList({ testCases, onReload, onRunSelected }: Props) {
       <div className="border rounded-md mt-3">
         {testCases.map((testCase, index) => (
           <div
-            key={index}
+            key={testCase.id}
             className="p-4 border-b flex items-center justify-between"
           >
             <div className="flex gap-3 items-center">
               <Checkbox
                 checked={selectedTestCases?.some(
-                  (item: any) => item.id === testCase?.id,
+                  (item) => item.id === testCase?.id,
                 )}
                 onCheckedChange={(checked) =>
                   handleSelectedTestCase(checked, testCase)
@@ -99,7 +101,10 @@ function TestCaseList({ testCases, onReload, onRunSelected }: Props) {
           <h2>Run Selected Test Cases</h2>
           <Button
             disabled={!selectedTestCases?.length}
-            onClick={() => onRunSelected(selectedTestCases)}
+            onClick={() => {
+              toast(`Opening runner for ${selectedTestCases.length} test case${selectedTestCases.length > 1 ? "s" : ""}.`);
+              onRunSelected(selectedTestCases);
+            }}
           >
             {" "}
             <Play className="w-4 h-4 mr-2" /> Run Selected

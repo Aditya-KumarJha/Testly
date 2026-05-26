@@ -8,6 +8,8 @@ import type { User } from "@/db/schema";
 import type { UserContextValue } from "@/lib/types";
 import { toast } from "sonner";
 
+const LOGIN_TOAST_PREFIX = "workspace-login-toast:";
+
 function Provider({
   children,
 }: Readonly<{
@@ -29,7 +31,16 @@ function Provider({
   const createOrLoadUser = async () => {
     try {
       const response = await axios.post<{ data: User }>("/api/users");
-      setUserDetail(response.data.data);
+      const nextUser = response.data.data;
+      setUserDetail(nextUser);
+
+      if (typeof window !== "undefined") {
+        const loginToastKey = `${LOGIN_TOAST_PREFIX}${nextUser.id}`;
+        if (!window.sessionStorage.getItem(loginToastKey)) {
+          toast.success("Login successful. Your workspace is ready.");
+          window.sessionStorage.setItem(loginToastKey, "true");
+        }
+      }
     } catch (error) {
       console.error("Failed to initialize user", error);
       toast.error("Unable to initialize your workspace session.");

@@ -87,7 +87,13 @@ function RepoDialog({ onRepoAdded }: { onRepoAdded: () => Promise<unknown> }) {
   }, [searchTerm, repoList]);
 
   const saveRepoToDB = async () => {
-    if (!selectedRepo || !userContext?.userDetail?.id) {
+    if (!selectedRepo) {
+      toast.error("Select a repository before adding it.");
+      return;
+    }
+
+    if (!userContext?.userDetail?.id) {
+      toast.error("Your workspace session is still loading. Please try again.");
       return;
     }
 
@@ -152,7 +158,7 @@ function RepoDialog({ onRepoAdded }: { onRepoAdded: () => Promise<unknown> }) {
                   className={`w-full rounded-xl border p-4 text-left transition ${
                     selectedRepo?.id === repo.id
                       ? "border-emerald-200 bg-emerald-50 shadow-sm"
-                      : "border-transparent bg-white hover:border-slate-200 hover:bg-slate-50"
+                      : "border-transparent bg-white hover:border-emerald-100 hover:bg-slate-50"
                   }`}
                   onClick={() => setSelectedRepo(repo)}
                   type="button"

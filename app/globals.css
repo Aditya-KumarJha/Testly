@@ -1,3 +1,5 @@
+@import url("https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500&display=swap");
+
 @import "tailwindcss";
 
 @theme inline {
@@ -55,7 +57,10 @@
 }
 
 :root {
-  --font-display: "Segoe UI", "Helvetica Neue", sans-serif;
+  --font-sans: "Geist", "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --font-serif: "Instrument Serif", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  --font-mono: "Geist Mono", "SFMono-Regular", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --font-display: var(--font-sans);
   --color-primary: oklch(0.6294 0.1216 131.94);
   --color-primary-foreground: hsl(0 0% 98%);
   --brand-1: #edf5e7;
@@ -123,11 +128,15 @@
       radial-gradient(circle at top left, rgba(122, 163, 90, 0.16), transparent 28%),
       radial-gradient(circle at top right, rgba(32, 49, 26, 0.08), transparent 24%),
       linear-gradient(180deg, #f8faf7 0%, #ffffff 18%, #f7faf5 100%);
-    font-family: var(--font-display);
+    font-family: var(--font-sans);
   }
   a {
     color: inherit;
     text-decoration: none;
+  }
+  ::selection {
+    background: rgba(122, 163, 90, 0.22);
+    color: #13200d;
   }
 }
 
@@ -141,5 +150,64 @@
     box-shadow:
       0 0 0 1px rgba(122, 163, 90, 0.12),
       0 30px 70px rgba(54, 72, 44, 0.14);
+  }
+
+  .font-brand-serif {
+    font-family: var(--font-serif);
+  }
+
+  .font-brand-mono {
+    font-family: var(--font-mono);
+  }
+
+  .brand-shell {
+    background:
+      radial-gradient(circle at top left, rgba(163, 198, 128, 0.22), transparent 28%),
+      radial-gradient(circle at top right, rgba(122, 163, 90, 0.12), transparent 20%),
+      linear-gradient(180deg, rgba(250, 253, 247, 0.96), #ffffff 22%, #f7faf5 100%);
+  }
+
+  .mesh-panel {
+    background:
+      linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(244, 249, 239, 0.92)),
+      radial-gradient(circle at top right, rgba(122, 163, 90, 0.12), transparent 35%);
+  }
+
+  .hover-lift {
+    transition:
+      transform 0.25s ease,
+      box-shadow 0.25s ease,
+      border-color 0.25s ease,
+      background-color 0.25s ease;
+  }
+
+  .hover-lift:hover {
+    transform: translateY(-3px);
+    box-shadow:
+      0 0 0 1px rgba(122, 163, 90, 0.12),
+      0 22px 40px rgba(54, 72, 44, 0.14);
+  }
+
+  .soft-dots {
+    background-image: radial-gradient(rgba(122, 163, 90, 0.12) 1px, transparent 1px);
+    background-size: 18px 18px;
+  }
+
+  .animated-sheen {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .animated-sheen::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-140%);
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+    transition: transform 0.7s ease;
+  }
+
+  .animated-sheen:hover::after {
+    transform: translateX(140%);
   }
 }

@@ -1,0 +1,16 @@
+export const C = {
+  primary: "#6d9846",
+  primaryDark: "#537832",
+  primaryLight: "#8ab85c",
+  primaryBg: "#f2f7ed",
+  primaryMid: "#d4e8c2",
+  ink: "#0d1a05",
+  inkMid: "#2d3d20",
+  muted: "#6b7a5e",
+  subtle: "#9aaa8c",
+  border: "#e2ecd8",
+  borderMid: "#cddcb8",
+  surface: "#ffffff",
+  surfaceAlt: "#f7faf4",
+  bg: "#fafdf7",
+} as const;

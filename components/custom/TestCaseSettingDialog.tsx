@@ -15,6 +15,7 @@ import { DialogClose } from "@radix-ui/react-dialog";
 import type { TestCase } from "@/lib/types";
 import { useEffect, useState } from "react";
 import axios from "axios";
+import { toast } from "sonner";
 
 type Props = {
   testCase?: TestCase;
@@ -22,6 +23,8 @@ type Props = {
 };
 
 function TestCaseSettingDialog({ testCase, setReload }: Props) {
+  const [open, setOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [formTestCase, setFormTestCase] = useState({
     title: testCase?.title || "",
     description: testCase?.description || "",
@@ -39,17 +42,28 @@ function TestCaseSettingDialog({ testCase, setReload }: Props) {
   }, [testCase]);
 
   const updateCase = async () => {
-    await axios.post("/api/test-cases/settings", {
-      ...formTestCase,
-      testCaseId: testCase?.id,
-    });
-    if (testCase?.repoId) {
-      setReload(testCase.repoId);
+    setIsSaving(true);
+
+    try {
+      await axios.post("/api/test-cases/settings", {
+        ...formTestCase,
+        testCaseId: testCase?.id,
+      });
+      if (testCase?.repoId) {
+        setReload(testCase.repoId);
+      }
+      setOpen(false);
+      toast.success("Test case updated.");
+    } catch (error) {
+      console.error("Failed to update test case", error);
+      toast.error("Unable to update that test case.");
+    } finally {
+      setIsSaving(false);
     }
   };
 
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button size={"icon"} variant={"outline"}>
           <SettingsIcon className="w-4 h-4" />
@@ -130,7 +144,9 @@ function TestCaseSettingDialog({ testCase, setReload }: Props) {
           <DialogClose asChild>
             <Button variant={"outline"}>Cancel</Button>
           </DialogClose>
-          <Button onClick={updateCase}>Update Case</Button>
+          <Button disabled={isSaving} onClick={updateCase}>
+            {isSaving ? "Updating..." : "Update Case"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

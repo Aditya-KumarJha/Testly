@@ -30,6 +30,7 @@ import {
   ChevronUp,
 } from "lucide-react";
 import axios from "axios";
+import { toast } from "sonner";
 
 type Props = {
   isOpen: boolean;
@@ -112,6 +113,21 @@ export default function TestExecutionModal({
   useEffect(() => {
     if (!isExecuting || currentIdx < 0 || currentIdx >= testCases.length) {
       if (currentIdx >= testCases.length) {
+        const completedResults = Object.values(results);
+        const passedCount = completedResults.filter(
+          (result) => result.status === "passed",
+        ).length;
+        const failedCount = completedResults.filter(
+          (result) => result.status === "failed",
+        ).length;
+
+        if (failedCount > 0) {
+          toast.error(
+            `Execution finished with ${passedCount} passed and ${failedCount} failed.`,
+          );
+        } else if (passedCount > 0) {
+          toast.success(`Execution finished successfully. ${passedCount} test cases passed.`);
+        }
         setIsExecuting(false);
       }
       return;
@@ -181,9 +197,23 @@ export default function TestExecutionModal({
     };
 
     runTest();
-  }, [isExecuting, currentIdx, testCases, baseUrl, executionMode]);
+  }, [isExecuting, currentIdx, testCases, baseUrl, executionMode, customPrompt, results]);
 
   const startExecution = () => {
+    const trimmedBaseUrl = baseUrl.trim();
+
+    if (!trimmedBaseUrl) {
+      toast.error("Enter a target website URL before starting execution.");
+      return;
+    }
+
+    try {
+      new URL(trimmedBaseUrl);
+    } catch {
+      toast.error("Enter a valid absolute URL such as http://localhost:3000.");
+      return;
+    }
+
     // Reset all statuses
     const resetResults: Record<number, RunResult> = {};
     testCases.forEach((tc) => {
@@ -198,11 +228,13 @@ export default function TestExecutionModal({
     setIsExecuting(true);
     setCurrentIdx(0);
     setSelectedDetailId(testCases[0].id);
+    toast(`Execution started for ${testCases.length} test case${testCases.length > 1 ? "s" : ""}.`);
   };
 
   const stopExecution = () => {
     setIsExecuting(false);
     setCurrentIdx(-1);
+    toast("Execution stopped.");
   };
 
   const currentSelectedResult = selectedDetailId

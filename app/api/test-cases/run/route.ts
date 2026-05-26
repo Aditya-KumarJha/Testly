@@ -1,19 +1,60 @@
-import { NextRequest, NextResponse } from "next/server";
+import { Browserbase } from "@browserbasehq/sdk";
 import { GoogleGenAI } from "@google/genai";
-import { db } from "@/db";
-import { TestCasesTable, repositories } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { cookies } from "next/headers";
-import { Browserbase } from "@browserbasehq/sdk";
+import { NextRequest, NextResponse } from "next/server";
 import { chromium } from "playwright-core";
+import { db } from "@/db";
+import { TestCasesTable, repositories } from "@/db/schema";
+import {
+  apiError,
+  getErrorMessage,
+  parseJsonBody,
+  toInteger,
+  toTrimmedString,
+} from "@/lib/api";
+import { getRequiredEnv } from "@/lib/env";
 
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY!,
-});
+const MAX_FILE_CONTENT_LENGTH = 5000;
 
-const bb = new Browserbase({
-  apiKey: process.env.BROWSERBASE_API_KEY!,
-});
+type RepositoryFile = {
+  path: string;
+  content: string;
+};
+
+type RequestMode = "cache" | "generate";
+
+function getAiClient() {
+  return new GoogleGenAI({
+    apiKey: getRequiredEnv("GEMINI_API_KEY"),
+  });
+}
+
+function getBrowserbaseClient() {
+  return new Browserbase({
+    apiKey: getRequiredEnv("BROWSERBASE_API_KEY"),
+  });
+}
+
+function safeSerializeLogValue(value: unknown) {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function sanitizeGeneratedCode(code: string) {
+  return code
+    .replace(/^```javascript\s*/i, "")
+    .replace(/^```js\s*/i, "")
+    .replace(/```$/, "")
+    .trim();
+}
 
 async function readGithubFile({
   owner,
@@ -28,44 +69,60 @@ async function readGithubFile({
   branch: string;
   githubToken: string;
 }) {
-  const res = await fetch(
+  const response = await fetch(
     `https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${branch}`,
     {
       headers: {
         Authorization: `Bearer ${githubToken}`,
         Accept: "application/vnd.github+json",
       },
+      cache: "no-store",
     },
   );
 
-  if (!res.ok) {
+  if (!response.ok) {
     return null;
   }
 
-  const data = await res.json();
-
-  if (!data.content) {
+  const data = (await response.json()) as { content?: string; encoding?: string };
+  if (!data.content || data.encoding !== "base64") {
     return null;
   }
-
-  const decodedContent = Buffer.from(data.content, "base64").toString("utf-8");
 
   return {
     path,
-    content: decodedContent.slice(0, 5000),
-  };
+    content: Buffer.from(data.content, "base64")
+      .toString("utf-8")
+      .slice(0, MAX_FILE_CONTENT_LENGTH),
+  } satisfies RepositoryFile;
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { testCaseId, baseUrl, mode = "generate", customPrompt = "" } = body;
+    const { data, errorResponse } = await parseJsonBody<{
+      testCaseId?: unknown;
+      baseUrl?: unknown;
+      mode?: unknown;
+      customPrompt?: unknown;
+    }>(req);
+
+    if (errorResponse || !data) {
+      return errorResponse ?? apiError("Invalid request body", 400);
+    }
+
+    const testCaseId = toInteger(data.testCaseId);
+    const baseUrl = toTrimmedString(data.baseUrl);
+    const mode = data.mode === "cache" ? "cache" : "generate";
+    const customPrompt = toTrimmedString(data.customPrompt);
 
     if (!testCaseId || !baseUrl) {
-      return NextResponse.json(
-        { error: "testCaseId and baseUrl are required" },
-        { status: 400 },
-      );
+      return apiError("testCaseId and baseUrl are required", 400);
+    }
+
+    try {
+      new URL(baseUrl);
+    } catch {
+      return apiError("baseUrl must be a valid absolute URL", 400);
     }
 
     const [testCase] = await db
@@ -74,32 +131,27 @@ export async function POST(req: NextRequest) {
       .where(eq(TestCasesTable.id, testCaseId));
 
     if (!testCase) {
-      return NextResponse.json(
-        { error: "Test case not found" },
-        { status: 404 },
-      );
+      return apiError("Test case not found", 404);
     }
 
     let repoRecord = null;
     if (testCase.repoId) {
-      const [r] = await db
-        .select()
-        .from(repositories)
-        .where(eq(repositories.repoId, Number(testCase.repoId)));
-      repoRecord = r;
+      const numericRepoId = Number(testCase.repoId);
+      if (Number.isInteger(numericRepoId)) {
+        const [repository] = await db
+          .select()
+          .from(repositories)
+          .where(eq(repositories.repoId, numericRepoId));
+        repoRecord = repository ?? null;
+      }
     }
 
     if (!repoRecord) {
-      const [r] = await db
+      const [repository] = await db
         .select()
         .from(repositories)
-        .where(
-          eq(
-            repositories.fullName,
-            `${testCase.repoOwner}/${testCase.repoName}`,
-          ),
-        );
-      repoRecord = r;
+        .where(eq(repositories.fullName, `${testCase.repoOwner}/${testCase.repoName}`));
+      repoRecord = repository ?? null;
     }
 
     let scriptText = testCase.browserbaseScript;
@@ -110,18 +162,15 @@ export async function POST(req: NextRequest) {
       const githubToken = cookiesStore.get("gh_token")?.value;
 
       if (!githubToken) {
-        return NextResponse.json(
-          { error: "GitHub authentication token is missing or expired" },
-          { status: 401 },
-        );
+        return apiError("GitHub authentication token is missing or expired", 401);
       }
 
-      const targetFiles = testCase.targetFiles || [];
+      const targetFiles = Array.isArray(testCase.targetFiles) ? testCase.targetFiles : [];
       let repoContext = "";
 
       if (targetFiles.length > 0) {
         const fileContents = await Promise.all(
-          targetFiles.map((path: string) =>
+          targetFiles.map((path) =>
             readGithubFile({
               owner: testCase.repoOwner,
               repo: testCase.repoName,
@@ -133,11 +182,12 @@ export async function POST(req: NextRequest) {
         );
 
         const validFiles = fileContents.filter(
-          (file): file is { path: string; content: string } => Boolean(file),
+          (file): file is RepositoryFile => Boolean(file),
         );
+
         repoContext = validFiles
           .map(
-            (file: { path: string; content: string }) => `
+            (file) => `
 File Path: ${file.path}
 File Content:
 ${file.content}
@@ -149,10 +199,12 @@ ${file.content}
       const globalIns = repoRecord?.globalInstructions
         ? `\n[GLOBAL PROJECT INSTRUCTIONS] (Follow strictly):\n${repoRecord.globalInstructions}\n`
         : "";
-
       const tempIns = customPrompt
         ? `\n[ADDITIONAL RUNTIME INSTRUCTIONS] (Follow strictly):\n${customPrompt}\n`
         : "";
+      const expectedResultText = (testCase.expectedResult ?? "")
+        .toLowerCase()
+        .replace(/'/g, "\\'");
 
       const prompt = `
 You are an expert QA automation engineer.
@@ -184,49 +236,27 @@ DO NOT import playwright, browserbase, assert, or any other modules.
 Navigate to the target route using:
 \`await page.goto('${baseUrl}${testCase.targetRoute || ""}', { waitUntil: 'load', timeout: 15000 })\`
 followed by a short settle wait: \`await page.waitForTimeout(1000)\`.
-Carefully analyze the Source File Context provided to find the EXACT forms, inputs, placeholders, buttons, and elements. Look for:
-Input names, placeholder texts, or labels (e.g. \`page.getByPlaceholder('Enter your name')\` or \`page.locator('input[name="email"]')\`).
-Button texts (e.g. \`page.getByRole('button', { name: /submit/i })\` or \`page.locator('button:has-text("Submit")')\`).
-Apply extreme selector resilience:
-If a specific selector or locator might fail, use flexible text-matching locators or check multiple variations.
-ALWAYS wait for an element to be visible before interacting with it: \`await page.waitForSelector('selector-or-text', { state: 'visible', timeout: 4000 }).catch(() => {})\`.
-Scroll elements into view before interaction to prevent out-of-bounds clicks: \`await locator.scrollIntoViewIfNeeded().catch(() => {})\`.
-If standard click fails or throws a timeout, try forcing it or using DOM-based dispatch click as a safe backup:
-\`await locator.click({ force: true, timeout: 2000 }).catch(async () => { await locator.evaluate(node => node.click()).catch(() => {}) })\`
-Introduce generous settling times:
-Add \`await page.waitForTimeout(1000)\` after major actions (clicks, inputs, typing, form submissions) to allow React, Next.js, or server state updates to propagate and elements to render.
+Carefully analyze the Source File Context provided to find the EXACT forms, inputs, placeholders, buttons, and elements.
+Apply extreme selector resilience and always wait for elements before interacting with them.
+Add \`await page.waitForTimeout(1000)\` after major actions.
 Use lenient, substring-based assertions:
-Do NOT use strict case-sensitive equality matches on text contents.
-Instead, search for presence or substring content in a relaxed, case-insensitive way. E.g.:
 \`const bodyText = await page.innerText('body');\`
-\`assert(bodyText.toLowerCase().includes('${testCase?.expectedResult?.toLowerCase().replace(/'/g, "\'")}'), 'Expected result state not matched');\`
-Or assert visibility of key success elements instead of exact string matching.
-Print descriptive logs at each step using \`console.log()\` to make debugging a breeze for the user.
+\`assert(bodyText.toLowerCase().includes('${expectedResultText}'), 'Expected result state not matched');\`
+Print descriptive logs at each step using \`console.log()\`.
 Return ONLY the raw JavaScript executable code.
-DO NOT wrap the code in markdown code blocks like \`\`\`javascript or \`\`\`.
+DO NOT wrap the code in markdown.
 DO NOT include any explanation.
-Just return the executable code.
 `;
 
-      const response = await ai.models.generateContent({
+      const response = await getAiClient().models.generateContent({
         model: "gemini-3.1-flash-lite",
         contents: prompt,
       });
 
-      let generatedCode = response.text || "";
-      generatedCode = generatedCode.replace(/^```javascript\s*/i, "");
-      generatedCode = generatedCode.replace(/^```js\s*/i, "");
-      generatedCode = generatedCode.replace(/```$/, "");
-      generatedCode = generatedCode.trim();
-
-      if (!generatedCode) {
-        return NextResponse.json(
-          { error: "Gemini failed to generate an automation script" },
-          { status: 500 },
-        );
+      scriptText = sanitizeGeneratedCode(response.text || "");
+      if (!scriptText) {
+        return apiError("Gemini failed to generate an automation script", 502);
       }
-
-      scriptText = generatedCode;
 
       await db
         .update(TestCasesTable)
@@ -242,71 +272,51 @@ Just return the executable code.
         .where(eq(TestCasesTable.id, testCase.id));
     }
 
+    if (!scriptText) {
+      return apiError("No automation script is available for this test case", 500);
+    }
+
     const logs: string[] = [];
     const customConsole = {
-      log: (...args: any[]) =>
-        logs.push(
-          args
-            .map((a) => (typeof a === "object" ? JSON.stringify(a) : String(a)))
-            .join(" "),
-        ),
-      error: (...args: any[]) =>
-        logs.push(
-          `[ERROR] ` +
-            args
-              .map((a) =>
-                typeof a === "object" ? JSON.stringify(a) : String(a),
-              )
-              .join(" "),
-        ),
-      warn: (...args: any[]) =>
-        logs.push(
-          `[WARN] ` +
-            args
-              .map((a) =>
-                typeof a === "object" ? JSON.stringify(a) : String(a),
-              )
-              .join(" "),
-        ),
+      log: (...args: unknown[]) => logs.push(args.map(safeSerializeLogValue).join(" ")),
+      error: (...args: unknown[]) =>
+        logs.push(`[ERROR] ${args.map(safeSerializeLogValue).join(" ")}`),
+      warn: (...args: unknown[]) =>
+        logs.push(`[WARN] ${args.map(safeSerializeLogValue).join(" ")}`),
     };
 
     let sessionId: string | null = null;
     let sessionUrl: string | null = null;
-    let connectUrl: string | null = null;
     let browser: import("playwright-core").Browser | null = null;
 
     try {
-      const session = await bb.sessions.create({
-        projectId: process.env.BROWSERBASE_PROJECT_ID!,
+      const session = await getBrowserbaseClient().sessions.create({
+        projectId: getRequiredEnv("BROWSERBASE_PROJECT_ID"),
       });
+
       sessionId = session.id;
       sessionUrl = `https://www.browserbase.com/sessions/${session.id}`;
-      connectUrl = session.connectUrl;
+      logs.push(`[SYSTEM] Browserbase session created successfully with ID: ${sessionId}`);
 
-      logs.push(
-        `[SYSTEM] Browserbase session created successfully with ID: ${sessionId}`,
-      );
-
-      if (!connectUrl) {
+      if (!session.connectUrl) {
         throw new Error("Browserbase session connect URL missing");
       }
-      browser = await chromium.connectOverCDP(connectUrl);
-      const context = browser.contexts()[0];
-      const page = context.pages()[0];
 
-      page.on("console", (msg: any) => {
+      browser = await chromium.connectOverCDP(session.connectUrl);
+      const context = browser.contexts()[0] ?? (await browser.newContext());
+      const page = context.pages()[0] ?? (await context.newPage());
+
+      page.on("console", (msg) => {
         logs.push(`[BROWSER] [${msg.type().toUpperCase()}] ${msg.text()}`);
       });
 
-      logs.push(
-        `[SYSTEM] Connected to Browserbase cloud browser, executing script...`,
-      );
+      logs.push("[SYSTEM] Connected to Browserbase cloud browser, executing script...");
 
-      const AsyncFunction = Object.getPrototypeOf(
-        async function () {},
-      ).constructor;
+      const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor as new (
+        ...args: string[]
+      ) => (page: unknown, assert: (condition: boolean, message?: string) => void, console: typeof customConsole) => Promise<void>;
+
       const runFn = new AsyncFunction("page", "assert", "console", scriptText);
-
       const assertHelper = (condition: boolean, message?: string) => {
         if (!condition) {
           throw new Error(message || "Assertion failed");
@@ -314,20 +324,14 @@ Just return the executable code.
       };
 
       await runFn(page, assertHelper, customConsole);
-
-      logs.push(
-        `[SYSTEM] Script execution completed successfully without errors.`,
-      );
-
-      await page.close().catch(() => {});
-      await browser.close().catch(() => {});
+      logs.push("[SYSTEM] Script execution completed successfully without errors.");
 
       await db
         .update(TestCasesTable)
         .set({
           status: "passed",
           browserbaseScript: scriptText,
-          logs: logs,
+          logs,
           sessionId,
           sessionUrl,
         })
@@ -341,45 +345,44 @@ Just return the executable code.
         logs,
         browserbaseScript: scriptText,
       });
-    } catch (execError: any) {
+    } catch (execError) {
       console.error("Script execution error:", execError);
-      logs.push(
-        `[SYSTEM ERROR] Script execution failed: ${
-          execError.message || String(execError)
-        }`,
-      );
-
-      if (browser) {
-        await browser.close().catch(() => {});
-      }
+      logs.push(`[SYSTEM ERROR] Script execution failed: ${getErrorMessage(execError)}`);
 
       await db
         .update(TestCasesTable)
         .set({
           status: "failed",
           browserbaseScript: scriptText,
-          logs: logs,
+          logs,
           sessionId,
           sessionUrl,
         })
         .where(eq(TestCasesTable.id, testCase.id));
 
-      return NextResponse.json({
-        success: false,
-        status: "failed",
-        error: execError.message || String(execError),
-        sessionId,
-        sessionUrl,
-        logs,
-        browserbaseScript: scriptText,
-      });
+      return NextResponse.json(
+        {
+          success: false,
+          status: "failed",
+          error: getErrorMessage(execError),
+          sessionId,
+          sessionUrl,
+          logs,
+          browserbaseScript: scriptText,
+        },
+        { status: 500 },
+      );
+    } finally {
+      if (browser) {
+        await browser.close().catch(() => {});
+      }
     }
-  } catch (error: any) {
+  } catch (error) {
     console.error("API endpoint error:", error);
     return NextResponse.json(
       {
         success: false,
-        error: error.message || "An unexpected error occurred",
+        error: getErrorMessage(error),
       },
       { status: 500 },
     );
