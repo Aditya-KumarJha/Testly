@@ -22,33 +22,20 @@ import {
   XCircle,
 } from "lucide-react";
 import StatusCard from "./StatusCard";
-import type { SavedRepository } from "@/lib/types";
+import type { SavedRepository, TestCase } from "@/lib/types";
 import { formatRelativeDate } from "@/lib/utils";
 import axios from "axios";
 import { useContext, useState } from "react";
 import { UserDetailContext } from "@/context/UserDetailContext";
 import TestCaseList from "./TestCaseList";
 import RepoSettings from "./RepoSettings";
+import TestExecutionModal from "./TestCaseExecutionModel";
 
 type Props = {
   repoList: SavedRepository[];
   setReload: () => void;
 };
 
-export type TestCase = {
-  id: number;
-  title: string;
-  description: string;
-  type: string;
-  repoId: number;
-  targetFiles: string[];
-  expectedResult: string;
-  priority: string;
-  repoName: string;
-  repoOwner: string;
-  branch: string;
-  targetRoute: string;
-};
 
 type StatusData = {
   totalTests: number;
@@ -62,6 +49,9 @@ function UserRepoList({ repoList, setReload }: Props) {
   const [loading, setLoading] = useState(false);
   const [testCasesLoading, setTestCasesLoading] = useState(false);
   const [testCases, setTestCases] = useState<TestCase[]>([]);
+  const [isRunnerOpen, setIsRunnerOpen] = useState(false);
+  const [runnerTestCases, setRunnerTestCases] = useState<TestCase[]>([]);
+  const [runnerRepo, setRunnerRepo] = useState<SavedRepository | null>(null);
   const [statusData, setStatusData] = useState<StatusData>({
     totalTests: 0,
     passedTests: 0,
@@ -71,43 +61,60 @@ function UserRepoList({ repoList, setReload }: Props) {
 
   const handleGenerateTestCases = async (repo: SavedRepository) => {
     setLoading(true);
-    const result = await axios.post("/api/generate-test-cases", {
-      userId: userContext?.userDetail?.id,
-      repoId: repo?.repoId,
-      owner: repo?.owner,
-      repo: repo?.name,
-      branch: repo?.defaultBranch,
-    });
+    try {
+      const result = await axios.post("/api/generate-test-cases", {
+        userId: userContext?.userDetail?.id,
+        repoId: repo?.repoId,
+        owner: repo?.owner,
+        repo: repo?.name,
+        branch: repo?.defaultBranch,
+      });
 
-    console.log("Test case generation result:", result.data);
-    setLoading(false);
+      console.log("Test case generation result:", result.data);
+      if (repo?.repoId) {
+        await getTestCases(String(repo.repoId));
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const getTestCases = async (repoId: number) => {
+  const getTestCases = async (repoId: string) => {
     setTestCasesLoading(true);
     setTestCases([]);
 
     const result = await axios.get(`/api/test-cases?repoId=${repoId}`);
 
+    const userTestCases = result.data as TestCase[];
+    const passedTests = userTestCases.filter((test) => test.status === "passed")
+      .length;
+    const failedTests = userTestCases.filter((test) => test.status === "failed")
+      .length;
+    const passRate =
+      userTestCases.length > 0
+        ? Math.round((passedTests / userTestCases.length) * 100)
+        : 0;
+
     setStatusData({
       totalTests: result.data.length,
-      passedTests: 0,
-      failedTests: 0,
-      passRate: 0,
+      passedTests: passedTests,
+      failedTests: failedTests,
+      passRate: passRate,
     });
+    
     setTestCases(result.data);
     setTestCasesLoading(false);
   };
 
   return (
-
-    <Accordion
+    <>
+      <Accordion
       type="single"
       collapsible
       className="space-y-4"
       onValueChange={(value) => {
         if (value) {
-          void getTestCases(Number(value));
+          void getTestCases(value);
         }
       }}
     >
@@ -262,7 +269,12 @@ function UserRepoList({ repoList, setReload }: Props) {
               ) : testCases.length > 0 ? (
                 <TestCaseList
                   testCases={testCases}
-                  onReload={(repoId: number) => getTestCases(repoId)}
+                  onReload={(repoId: string) => getTestCases(repoId)}
+                  onRunSelected={(selected) => {
+                    setRunnerTestCases(selected);
+                    setRunnerRepo(repo);
+                    setIsRunnerOpen(true);
+                  }}
                 />
               ) : null}
 
@@ -299,6 +311,18 @@ function UserRepoList({ repoList, setReload }: Props) {
         </AccordionItem>
       ))}
     </Accordion>
+    <TestExecutionModal
+      isOpen={isRunnerOpen}
+      onClose={() => {
+        setIsRunnerOpen(false);
+        if (runnerRepo?.repoId) {
+          void getTestCases(String(runnerRepo.repoId));
+        }
+      }}
+      testCases={runnerTestCases}
+      repository={runnerRepo}
+    />
+  </>
   );
 }
 

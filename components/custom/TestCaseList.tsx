@@ -1,18 +1,23 @@
 import { Play, RefreshCw } from "lucide-react";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
-import { TestCase } from "./UserRepoList";
+import type { TestCase } from "@/lib/types";
 import { Checkbox } from "@/components/ui/checkbox";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import TestCaseSettingDialog from "./TestCaseSettingDialog";
 
 type Props = {
   testCases: TestCase[];
-  onReload: (repoId: number) => void;
+  onReload: (repoId: string) => void;
+  onRunSelected: (testCases: TestCase[]) => void;
 };
 
-function TestCaseList({ testCases, onReload }: Props) {
+function TestCaseList({ testCases, onReload, onRunSelected }: Props) {
   const [selectedTestCases, setSelectedTestCases] = useState<TestCase[]>([]);
+
+  useEffect(() => {
+    setSelectedTestCases([]);
+  }, [testCases]);
 
   const handleSelectedTestCase = (
     checked: boolean | string,
@@ -54,7 +59,9 @@ function TestCaseList({ testCases, onReload }: Props) {
           >
             <div className="flex gap-3 items-center">
               <Checkbox
-                checked={selectedTestCases?.some((item:any) => item.id === testCase?.id)}
+                checked={selectedTestCases?.some(
+                  (item: any) => item.id === testCase?.id,
+                )}
                 onCheckedChange={(checked) =>
                   handleSelectedTestCase(checked, testCase)
                 }
@@ -66,9 +73,23 @@ function TestCaseList({ testCases, onReload }: Props) {
                 </p>
               </div>
             </div>
-            <div className="flex gap-4">
+            <div className="flex gap-4 items-center">
               <Badge variant={"secondary"}>{testCase?.type}</Badge>
-              <Badge variant={"secondary"}>Pending</Badge>
+              {testCase?.status == "failed" && (
+                <Badge variant={"destructive"} className="text-red-200 font-normal">
+                  {testCase?.status}
+                </Badge>
+              )}
+              {testCase?.status == "passed" && (
+                <Badge variant={"default"} className="text-green-200 font-normal bg-green-700">
+                  {testCase?.status}
+                </Badge>
+              )}
+              {testCase?.status == "running" && (
+                <Badge variant={"default"} className="text-yellow-200 font-normal bg-yellow-700">
+                  {testCase?.status}
+                </Badge>
+              )}
               <Badge variant={"secondary"}>{testCase?.priority}</Badge>
               <TestCaseSettingDialog testCase={testCase} setReload={onReload} />
             </div>
@@ -76,7 +97,10 @@ function TestCaseList({ testCases, onReload }: Props) {
         ))}
         <div className="p-4 flex items-center justify-between bg-gray-100">
           <h2>Run Selected Test Cases</h2>
-          <Button disabled={!selectedTestCases?.length}>
+          <Button
+            disabled={!selectedTestCases?.length}
+            onClick={() => onRunSelected(selectedTestCases)}
+          >
             {" "}
             <Play className="w-4 h-4 mr-2" /> Run Selected
           </Button>

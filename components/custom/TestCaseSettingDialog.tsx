@@ -12,13 +12,13 @@ import { SettingsIcon } from "lucide-react";
 import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
 import { DialogClose } from "@radix-ui/react-dialog";
-import { TestCase } from "./UserRepoList";
+import type { TestCase } from "@/lib/types";
 import { useEffect, useState } from "react";
 import axios from "axios";
 
 type Props = {
   testCase?: TestCase;
-  setReload: (repoId: number) => void;
+  setReload: (repoId: string) => void;
 };
 
 function TestCaseSettingDialog({ testCase, setReload }: Props) {

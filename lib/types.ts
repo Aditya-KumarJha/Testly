@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from "react";
-import type { Repository, User } from "@/db/schema";
+import type { Repository, TestCase as DbTestCase, User } from "@/db/schema";
 
 export type UserContextValue = {
   userDetail: User | null;
@@ -26,6 +26,8 @@ export type GitHubRepository = RepositoryPayload & {
 };
 
 export type SavedRepository = Repository;
+
+export type TestCase = DbTestCase;
 
 export type GitHubProfile = {
   id: number;
