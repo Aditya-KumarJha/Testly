@@ -17,6 +17,8 @@ export type RepositoryPayload = {
   language: string | null;
   defaultBranch: string;
   owner: string;
+  targetDomain?: string;
+  globalInstructions?: string;
 };
 
 export type GitHubRepository = RepositoryPayload & {

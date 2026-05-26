@@ -11,6 +11,7 @@ import {
   ExternalLink,
   GitBranch,
   Globe,
+  Link2Icon,
   ListChecks,
   Loader2,
   Loader2Icon,
@@ -27,9 +28,11 @@ import axios from "axios";
 import { useContext, useState } from "react";
 import { UserDetailContext } from "@/context/UserDetailContext";
 import TestCaseList from "./TestCaseList";
+import RepoSettings from "./RepoSettings";
 
 type Props = {
   repoList: SavedRepository[];
+  setReload: () => void;
 };
 
 export type TestCase = {
@@ -54,8 +57,7 @@ type StatusData = {
   passRate: number;
 };
 
-function UserRepoList({ repoList }: Props) {
-
+function UserRepoList({ repoList, setReload }: Props) {
   const userContext = useContext(UserDetailContext);
   const [loading, setLoading] = useState(false);
   const [testCasesLoading, setTestCasesLoading] = useState(false);
@@ -98,6 +100,7 @@ function UserRepoList({ repoList }: Props) {
   };
 
   return (
+
     <Accordion
       type="single"
       collapsible
@@ -183,6 +186,14 @@ function UserRepoList({ repoList }: Props) {
           </AccordionTrigger>
           <AccordionContent>
             <div className="pt-4 space-y-5">
+              <div className="bg-gray-50 p-3 border rounded-xl flex justify-between items-center">
+                <div className="flex gap-3 items-center">
+                  <Link2Icon className="h-5 w-5 text-primary" />
+                  <h2>Target Domain: </h2>
+                  <h2 className="bg-white p-1 px-2 border rounded-md text-primary font-medium">{repo?.targetDomain}</h2>
+                </div>
+                <RepoSettings repo={repo} setReload={setReload} />
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <StatusCard
                   title="Total Tests"

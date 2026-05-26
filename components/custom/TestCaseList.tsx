@@ -1,13 +1,14 @@
-import { Play, RefreshCw, SettingsIcon } from "lucide-react";
+import { Play, RefreshCw } from "lucide-react";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { TestCase } from "./UserRepoList";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useState } from "react";
+import TestCaseSettingDialog from "./TestCaseSettingDialog";
 
 type Props = {
   testCases: TestCase[];
-  onReload: any;
+  onReload: (repoId: number) => void;
 };
 
 function TestCaseList({ testCases, onReload }: Props) {
@@ -35,7 +36,12 @@ function TestCaseList({ testCases, onReload }: Props) {
         <Button
           size={"sm"}
           variant={"outline"}
-          onClick={() => onReload(testCases[0]?.repoId)}
+          onClick={() => {
+            const repoId = testCases[0]?.repoId;
+            if (repoId) {
+              onReload(repoId);
+            }
+          }}
         >
           <RefreshCw className="w-4 h-4 mr-2" /> Refresh
         </Button>
@@ -64,9 +70,7 @@ function TestCaseList({ testCases, onReload }: Props) {
               <Badge variant={"secondary"}>{testCase?.type}</Badge>
               <Badge variant={"secondary"}>Pending</Badge>
               <Badge variant={"secondary"}>{testCase?.priority}</Badge>
-              <Button size={"icon"} variant={"outline"}>
-                <SettingsIcon className="w-4 h-4" />
-              </Button>
+              <TestCaseSettingDialog testCase={testCase} setReload={onReload} />
             </div>
           </div>
         ))}

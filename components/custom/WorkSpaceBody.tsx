@@ -381,7 +381,7 @@ function WorkSpaceBody() {
             </CardContent>
           </Card>
         ) : (
-          <UserRepoList repoList={userRepoList} />
+          <UserRepoList repoList={userRepoList} setReload={() => void getUserRepoList()} />
         )}
       </section>
     </div>
