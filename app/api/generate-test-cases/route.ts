@@ -1,8 +1,9 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
+import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { TestCasesTable } from "@/db/schema";
+import { TestCasesTable, users } from "@/db/schema";
 import {
   apiError,
   getErrorMessage,
@@ -204,6 +205,25 @@ export async function POST(req: NextRequest) {
       return apiError("userId, owner, and repo are required", 400);
     }
 
+    const userIdNum = parseInt(userId, 10);
+    if (isNaN(userIdNum)) {
+      return apiError("userId must be a valid integer", 400);
+    }
+
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, userIdNum));
+
+    if (!user) {
+      return apiError("User not found", 404);
+    }
+
+    const REQUIRED_CREDITS = 10;
+    if (user.credits < REQUIRED_CREDITS) {
+      return apiError("Not enough credits. Please purchase more credits first.", 402);
+    }
+
     const repoFiles = await getRepoTree({
       owner,
       repo,
@@ -362,6 +382,13 @@ Important rules:
         })),
       )
       .returning();
+
+    const creditsToDeduct = insertedTestCases.length * 10;
+    const newCredits = Math.max(0, user.credits - creditsToDeduct);
+    await db
+      .update(users)
+      .set({ credits: newCredits })
+      .where(eq(users.id, user.id));
 
     return NextResponse.json({
       success: true,

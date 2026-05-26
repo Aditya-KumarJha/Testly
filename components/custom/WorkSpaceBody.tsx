@@ -10,6 +10,7 @@ import EmptyWorkspace from "./EmptyWorkspace";
 import axios from "axios";
 import RepoDialog from "./RepoDialog";
 import UserRepoList from "./UserRepoList";
+import Link from "next/link";
 import type { GitHubProfile, SavedRepository } from "@/lib/types";
 import {
   getClientCache,
@@ -26,6 +27,7 @@ import {
   ShieldCheck,
   Users,
   Workflow,
+  Zap,
 } from "lucide-react";
 
 const GITHUB_CONNECTION_CACHE_KEY = "github-connection";
@@ -63,6 +65,17 @@ function WorkSpaceBody() {
   const [hasHydratedCache, setHasHydratedCache] = useState(false);
   const isGithubSuccessRedirect = searchParams.get("success") === "true";
   const userId = userContext?.userDetail?.id;
+
+  const refreshUserDetails = useCallback(async () => {
+    try {
+      const response = await axios.post<{ data: any }>("/api/users");
+      if (userContext) {
+        userContext.setUserDetail(response.data.data);
+      }
+    } catch (error) {
+      console.error("Failed to refresh user details:", error);
+    }
+  }, [userContext]);
 
   const getGithubProfile = useCallback(async () => {
     const cachedProfile = getClientCache<GitHubProfile>(GITHUB_PROFILE_CACHE_KEY);
@@ -276,6 +289,7 @@ function WorkSpaceBody() {
                 onClick={() => {
                   void getGithubConnectionStatus();
                   void getUserRepoList();
+                  void refreshUserDetails();
                 }}
                 type="button"
               >
@@ -296,6 +310,12 @@ function WorkSpaceBody() {
               <p className="mt-2 text-sm text-slate-500">
                 Credits power repository analysis and upcoming execution runs.
               </p>
+              <Link
+                href="/workspace/pricing"
+                className="mt-3 w-full rounded-2xl bg-[#6D9846] hover:bg-[#5d873d] text-white shadow-md font-semibold text-xs py-2.5 flex gap-1.5 items-center justify-center transition"
+              >
+                <Zap className="h-3.5 w-3.5 fill-current animate-pulse" /> Buy Credits
+              </Link>
             </div>
 
             <div className="rounded-3xl border border-slate-200 bg-slate-950 p-5 text-white shadow-xl shadow-slate-900/10">
@@ -408,6 +428,7 @@ function WorkSpaceBody() {
               onClick={() => {
                 void getGithubConnectionStatus();
                 void getUserRepoList();
+                void refreshUserDetails();
               }}
               variant="outline"
             >

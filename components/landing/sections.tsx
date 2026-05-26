@@ -159,7 +159,7 @@ export const NavBar: FC<{ isSignedIn: boolean; scrolled: boolean }> = ({
             letterSpacing: "0.01em",
           }}
         >
-          {isSignedIn ? "Open Workspace →" : "Connect GitHub →"}
+          {isSignedIn ? "Dashboard →" : "Connect GitHub →"}
         </Link>
       </div>
     </div>

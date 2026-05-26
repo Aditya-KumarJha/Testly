@@ -75,9 +75,20 @@ function UserRepoList({ repoList, setReload }: Props) {
         await getTestCases(String(repo.repoId));
       }
       toast.success("Test cases generated successfully.");
-    } catch (error) {
+
+      // Sync user detail credits in real-time
+      try {
+        const userRes = await axios.post<{ data: any }>("/api/users");
+        if (userContext) {
+          userContext.setUserDetail(userRes.data.data);
+        }
+      } catch (e) {
+        console.error("Failed to sync credits:", e);
+      }
+    } catch (error: any) {
       console.error("Failed to generate test cases", error);
-      toast.error("Unable to generate test cases right now.");
+      const errMsg = error.response?.data?.error || "Unable to generate test cases right now.";
+      toast.error(errMsg);
     } finally {
       setGeneratingRepoId(null);
     }

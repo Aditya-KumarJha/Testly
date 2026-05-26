@@ -1,7 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { UserButton } from "@clerk/nextjs";
-import { ArrowUpRight, LayoutDashboard, Sparkles, Workflow } from "lucide-react";
+import { ArrowUpRight, LayoutDashboard, CreditCard, Workflow } from "lucide-react";
 
 function WorkSpaceHeader() {
   return (
@@ -33,10 +33,10 @@ function WorkSpaceHeader() {
             <li>
               <Link
                 className="inline-flex items-center gap-2 transition hover:text-[#6D9846]"
-                href="/#features"
+                href="/workspace/pricing"
               >
-                <Sparkles className="h-4 w-4" />
-                Features
+                <CreditCard className="h-4 w-4" />
+                Pricing
               </Link>
             </li>
             <li>

@@ -5,7 +5,7 @@ import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import { chromium } from "playwright-core";
 import { db } from "@/db";
-import { TestCasesTable, repositories } from "@/db/schema";
+import { TestCasesTable, repositories, users } from "@/db/schema";
 import {
   apiError,
   getErrorMessage,
@@ -133,6 +133,31 @@ export async function POST(req: NextRequest) {
     if (!testCase) {
       return apiError("Test case not found", 404);
     }
+
+    const userIdNum = parseInt(testCase.userId, 10);
+    if (isNaN(userIdNum)) {
+      return apiError("Invalid user associated with this testcase", 400);
+    }
+
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, userIdNum));
+
+    if (!user) {
+      return apiError("User not found", 404);
+    }
+
+    const REQUIRED_CREDITS = 10;
+    if (user.credits < REQUIRED_CREDITS) {
+      return apiError("Not enough credits. Please purchase more credits first.", 402);
+    }
+
+    const newCredits = Math.max(0, user.credits - REQUIRED_CREDITS);
+    await db
+      .update(users)
+      .set({ credits: newCredits })
+      .where(eq(users.id, user.id));
 
     let repoRecord = null;
     if (testCase.repoId) {

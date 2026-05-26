@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useContext } from "react";
 import {
   Dialog,
   DialogContent,
@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import axios from "axios";
 import { toast } from "sonner";
+import { UserDetailContext } from "@/context/UserDetailContext";
 
 type Props = {
   isOpen: boolean;
@@ -56,6 +57,7 @@ export default function TestExecutionModal({
   repository,
 }: Props) {
   const [baseUrl, setBaseUrl] = useState("http://localhost:3000");
+  const userContext = useContext(UserDetailContext);
   const [currentIdx, setCurrentIdx] = useState<number>(-1);
   const [isExecuting, setIsExecuting] = useState(false);
   const [results, setResults] = useState<Record<number, RunResult>>({});
@@ -190,6 +192,23 @@ export default function TestExecutionModal({
             logs: [...(prev[tcId]?.logs || []), `[SYSTEM ERROR] ${errMsg}`],
           },
         }));
+
+        if (err.response?.status === 402 || errMsg.toLowerCase().includes("credits")) {
+          toast.error("Execution stopped: Insufficient credits. Please buy credits.");
+          setIsExecuting(false);
+          setCurrentIdx(-1);
+          return;
+        }
+      }
+
+      // Sync credits in real-time
+      try {
+        const userRes = await axios.post<{ data: any }>("/api/users");
+        if (userContext) {
+          userContext.setUserDetail(userRes.data.data);
+        }
+      } catch (e) {
+        console.error("Failed to sync credits:", e);
       }
 
       // Move to next item in the queue
