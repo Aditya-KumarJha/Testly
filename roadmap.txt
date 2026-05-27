@@ -1,0 +1,78 @@
+Testly Roadmap and Architecture Assessment
+Date: 27 May 2026
+
+Architecture Assessment (Risks and Fixes)
+1) RabbitMQ consumer inside Next.js runtime
+   - Risk: serverless restarts, duplicate consumers, missed/duplicated emails
+   - Fix: move consumer to dedicated worker, add idempotency keys, dead-letter queue
+2) In-memory rate limiter
+   - Risk: resets on deploy, inconsistent limits across instances
+   - Fix: Redis/Upstash-based limiter, per-user + per-IP keys
+3) Long-running Browserbase execution in API route
+   - Risk: request timeouts, partial updates, unstable runs
+   - Fix: async job queue; API returns job id; worker updates DB + status
+4) Credits handling not fully transactional
+   - Risk: double-deduct or partial deduct on failures
+   - Fix: DB transaction + reserve/finalize credits with optimistic lock
+5) Script generation and execution isolation
+   - Risk: unsafe or brittle AI-generated code
+   - Fix: stricter sanitization, allowlist page APIs, max steps/timeouts
+6) Limited observability
+   - Risk: hard to diagnose failures end-to-end
+   - Fix: structured logs per run, trace id, store artifacts
+7) Repo analysis context is coarse
+   - Risk: test quality and cost issues
+   - Fix: smarter file selection + repo snapshot caching
+8) No run history or versioning
+   - Risk: weak audit trail and regression tracking
+   - Fix: run history + test case versions with restore
+9) OAuth token longevity and scope
+   - Risk: security exposure
+   - Fix: minimize scopes, rotate tokens, encrypt at rest
+
+Phased Roadmap
+
+MVP (4-6 weeks) - Reliable runs + history
+Impact: High | Effort: Medium
+Deliverables:
+- Run history per repo/test case
+- Async execution pipeline (queue/worker)
+- Artifacts: logs + screenshots
+- Credit accounting safeguards
+Tickets:
+1) Create run_history table (run_id, test_case_id, status, logs, started_at, finished_at, credits_used)
+2) Queue-based execution (enqueue job on /run; worker executes and updates DB)
+3) Artifacts store (console logs + screenshots with download links)
+4) Credit reservation flow (reserve -> finalize or rollback)
+5) UI run history (timeline + rerun button)
+6) Run cancellation (mark as aborted)
+
+V1 (6-10 weeks) - Trust + collaboration
+Impact: Very High | Effort: Medium-High
+Deliverables:
+- Team workspaces + roles
+- Flaky detection + retries
+- Selector strategy controls
+- Test case versioning
+Tickets:
+1) Team accounts (orgs, members, roles: owner/admin/viewer)
+2) Flaky detection (auto-retry + confidence score)
+3) Selector preferences (data-testid priority, user overrides)
+4) Test case versioning (compare/restore)
+5) Notifications (Slack/email on failed runs)
+6) Run analytics (pass rate, duration trends, credits by repo)
+
+V1.5 (8-12 weeks) - Enterprise readiness
+Impact: High | Effort: High
+Deliverables:
+- Webhooks + integrations
+- Environment profiles (staging/prod/local)
+- Advanced artifacts (HAR/video/network logs)
+- Security hardening
+Tickets:
+1) Environment profiles (base URLs, creds, secrets per repo)
+2) Artifacts v2 (HAR + video + DOM snapshots)
+3) GitHub webhooks (auto-run on PR/commit/schedule)
+4) Audit log (runs, credits, admin actions)
+5) Security hardening (token encryption, scope minimization, secrets vault)
+6) Performance optimizations (cache repo tree + AI context)
