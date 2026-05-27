@@ -3,9 +3,25 @@ import { db } from "@/db";
 import { repositories } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import { apiError, apiSuccess } from "@/lib/api";
+import {
+  checkRateLimit,
+  rateLimitHeaders,
+  rateLimitResponse,
+} from "@/lib/rate-limit";
 
 export async function POST(req: NextRequest) {
   try {
+    const rate = checkRateLimit(req, {
+      keyPrefix: "user-repo-post",
+      limit: 30,
+      windowMs: 60_000,
+    });
+
+    if (!rate.allowed) {
+      return rateLimitResponse(rate);
+    }
+
+    const headers = rateLimitHeaders(rate);
     const body = await req.json();
     const repoId = Number(body.repoId);
     const userId = Number(body.userId);
@@ -40,7 +56,7 @@ export async function POST(req: NextRequest) {
       );
 
     if (existingRepository.length > 0) {
-      return apiSuccess(existingRepository[0]);
+      return apiSuccess(existingRepository[0], { headers });
     }
 
     const result = await db
@@ -60,7 +76,7 @@ export async function POST(req: NextRequest) {
       })
       .returning();
 
-    return apiSuccess(result[0], { status: 201 });
+    return apiSuccess(result[0], { status: 201, headers });
   } catch (error) {
     console.error("Failed to save repository", error);
     return apiError("Failed to save repository", 500);
@@ -69,6 +85,18 @@ export async function POST(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   try {
+    const rate = checkRateLimit(req, {
+      keyPrefix: "user-repo-get",
+      limit: 60,
+      windowMs: 60_000,
+    });
+
+    if (!rate.allowed) {
+      return rateLimitResponse(rate);
+    }
+
+    const headers = rateLimitHeaders(rate);
+    headers.set("Cache-Control", "private, max-age=30, stale-while-revalidate=60");
     const { searchParams } = new URL(req.url);
     const userId = Number(searchParams.get("userId"));
 
@@ -81,7 +109,7 @@ export async function GET(req: NextRequest) {
       .from(repositories)
       .where(eq(repositories.userId, userId));
 
-    return apiSuccess(result);
+    return apiSuccess(result, { headers });
   } catch (error) {
     console.error("Failed to fetch repositories", error);
     return apiError("Failed to fetch repositories", 500);

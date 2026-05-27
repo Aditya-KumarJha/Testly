@@ -4,6 +4,11 @@ import { users } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { apiError, apiSuccess, parseJsonBody, toInteger, toTrimmedString } from "@/lib/api";
 import { getRequiredEnv } from "@/lib/env";
+import {
+  checkRateLimit,
+  rateLimitHeaders,
+  rateLimitResponse,
+} from "@/lib/rate-limit";
 
 const PLANS = {
   basic: { price: 199, credits: 100 },
@@ -13,6 +18,17 @@ const PLANS = {
 
 export async function POST(req: NextRequest) {
   try {
+    const rate = checkRateLimit(req, {
+      keyPrefix: "razorpay-order",
+      limit: 10,
+      windowMs: 60_000,
+    });
+
+    if (!rate.allowed) {
+      return rateLimitResponse(rate);
+    }
+
+    const headers = rateLimitHeaders(rate);
     const { data, errorResponse } = await parseJsonBody<{
       planId?: unknown;
       userId?: unknown;
@@ -75,7 +91,8 @@ export async function POST(req: NextRequest) {
       amount: orderData.amount,
       currency: orderData.currency,
       keyId, // Send keyId to frontend so it can open the modal
-    });
+    },
+    { headers });
   } catch (error) {
     console.error("Razorpay Order Endpoint Error:", error);
     return apiError("Internal server error", 500);

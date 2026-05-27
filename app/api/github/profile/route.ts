@@ -1,9 +1,27 @@
 import { cookies } from "next/headers";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { apiError, apiSuccess } from "@/lib/api";
 import type { GitHubProfile } from "@/lib/types";
+import {
+  checkRateLimit,
+  rateLimitHeaders,
+  rateLimitResponse,
+} from "@/lib/rate-limit";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const rate = checkRateLimit(req, {
+    keyPrefix: "github-profile",
+    limit: 30,
+    windowMs: 60_000,
+  });
+
+  if (!rate.allowed) {
+    return rateLimitResponse(rate);
+  }
+
+  const headers = rateLimitHeaders(rate);
+  headers.set("Cache-Control", "private, max-age=60, stale-while-revalidate=120");
+
   try {
     const cookiesStore = await cookies();
     const token = cookiesStore.get("gh_token")?.value;
@@ -23,7 +41,7 @@ export async function GET() {
       if (response.status === 401 || response.status === 403) {
         const errorResponse = NextResponse.json(
           { error: "GitHub token expired or revoked" },
-          { status: 401 },
+          { status: 401, headers },
         );
         errorResponse.cookies.set("gh_token", "", {
           httpOnly: true,
@@ -52,7 +70,7 @@ export async function GET() {
       publicRepos: profile.public_repos ?? 0,
     };
 
-    return apiSuccess(payload);
+    return apiSuccess(payload, { headers });
   } catch (error) {
     console.error("Failed to load GitHub profile", error);
     return apiError("Failed to load GitHub profile", 500);

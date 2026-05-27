@@ -10,9 +10,25 @@ import {
   toOptionalTrimmedString,
   toTrimmedString,
 } from "@/lib/api";
+import {
+  checkRateLimit,
+  rateLimitHeaders,
+  rateLimitResponse,
+} from "@/lib/rate-limit";
 
 export async function POST(req: NextRequest) {
   try {
+    const rate = checkRateLimit(req, {
+      keyPrefix: "test-cases-settings",
+      limit: 30,
+      windowMs: 60_000,
+    });
+
+    if (!rate.allowed) {
+      return rateLimitResponse(rate);
+    }
+
+    const headers = rateLimitHeaders(rate);
     const { data, errorResponse } = await parseJsonBody<{
       title?: unknown;
       description?: unknown;
@@ -53,7 +69,7 @@ export async function POST(req: NextRequest) {
       return apiError("Test case not found", 404);
     }
 
-    return apiSuccess(result[0]);
+    return apiSuccess(result[0], { headers });
   } catch (error) {
     console.error("Failed to update test case", error);
     return apiError("Failed to update test case", 500);

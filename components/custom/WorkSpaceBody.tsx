@@ -368,7 +368,7 @@ function WorkSpaceBody() {
                   alt={githubProfile.login}
                   width={40}
                   height={40}
-                  className="h-10 w-10 rounded-xl object-cover"
+                  className="rounded-xl object-cover"
                 />
               ) : (
                 <Image src={"/github.png"} alt="GitHub" width={34} height={34} />

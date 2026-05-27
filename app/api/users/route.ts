@@ -1,12 +1,29 @@
 import { currentUser } from "@clerk/nextjs/server";
 import { eq } from "drizzle-orm";
+import { NextRequest } from "next/server";
 import { db } from "@/db";
 import { users } from "@/db/schema";
 import { apiError, apiSuccess } from "@/lib/api";
 import { publishToQueue } from "@/lib/rabbitmq";
+import {
+  checkRateLimit,
+  rateLimitHeaders,
+  rateLimitResponse,
+} from "@/lib/rate-limit";
 
-export async function POST() {
+export async function POST(req: NextRequest) {
   try {
+    const rate = checkRateLimit(req, {
+      keyPrefix: "users-post",
+      limit: 30,
+      windowMs: 60_000,
+    });
+
+    if (!rate.allowed) {
+      return rateLimitResponse(rate);
+    }
+
+    const headers = rateLimitHeaders(rate);
     const user = await currentUser();
 
     if (!user) {
@@ -38,10 +55,10 @@ export async function POST() {
         name: newUser[0].name || "New User",
       });
 
-      return apiSuccess(newUser[0]);
+      return apiSuccess(newUser[0], { headers });
     }
 
-    return apiSuccess(userResult[0]);
+    return apiSuccess(userResult[0], { headers });
   } catch (e) {
     console.error("Error creating user", e);
     return apiError("Failed to create or load user", 500);

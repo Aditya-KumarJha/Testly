@@ -101,8 +101,9 @@ function UserRepoList({ repoList, setReload }: Props) {
     setTestCases([]);
 
     try {
+      const cacheBuster = Date.now();
       const result = await axios.get<{ data: TestCase[] }>(
-        `/api/test-cases?repoId=${repoId}`,
+        `/api/test-cases?repoId=${repoId}&t=${cacheBuster}`,
       );
 
       const userTestCases = result.data.data;

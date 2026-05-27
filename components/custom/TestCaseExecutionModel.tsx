@@ -115,10 +115,7 @@ export default function TestExecutionModal({
           "http://localhost:3000",
       );
 
-      // Auto-detect if any selected testcase doesn't have a cached script.
-      // If even one doesn't have a script, default to "generate" mode.
-      const hasMissingScript = testCases.some((tc) => !tc.browserbaseScript);
-      setExecutionMode(hasMissingScript ? "generate" : "cache");
+      setExecutionMode("cache");
     }
   }, [isOpen, testCases, repository]);
 

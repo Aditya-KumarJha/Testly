@@ -1,9 +1,27 @@
 import { cookies } from "next/headers";
 import { apiError, apiSuccess } from "@/lib/api";
 import type { RepositoryPayload } from "@/lib/types";
+import { NextRequest } from "next/server";
+import {
+  checkRateLimit,
+  rateLimitHeaders,
+  rateLimitResponse,
+} from "@/lib/rate-limit";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
+    const rate = checkRateLimit(req, {
+      keyPrefix: "github-repos",
+      limit: 20,
+      windowMs: 60_000,
+    });
+
+    if (!rate.allowed) {
+      return rateLimitResponse(rate);
+    }
+
+    const headers = rateLimitHeaders(rate);
+    headers.set("Cache-Control", "private, max-age=60, stale-while-revalidate=120");
     const cookiesStore = await cookies();
     const token = cookiesStore.get("gh_token")?.value;
 
@@ -52,7 +70,7 @@ export async function GET() {
       page += 1;
     }
 
-    return apiSuccess(allRepos);
+    return apiSuccess(allRepos, { headers });
   } catch (error) {
     console.error("Failed to load GitHub repositories", error);
     return apiError("Failed to load GitHub repositories", 500);

@@ -6,6 +6,11 @@ import crypto from "crypto";
 import { apiError, apiSuccess, parseJsonBody, toInteger, toTrimmedString } from "@/lib/api";
 import { getRequiredEnv } from "@/lib/env";
 import { publishToQueue } from "@/lib/rabbitmq";
+import {
+  checkRateLimit,
+  rateLimitHeaders,
+  rateLimitResponse,
+} from "@/lib/rate-limit";
 
 const PLANS = {
   basic: { price: 199, credits: 100 },
@@ -15,6 +20,17 @@ const PLANS = {
 
 export async function POST(req: NextRequest) {
   try {
+    const rate = checkRateLimit(req, {
+      keyPrefix: "razorpay-verify",
+      limit: 10,
+      windowMs: 60_000,
+    });
+
+    if (!rate.allowed) {
+      return rateLimitResponse(rate);
+    }
+
+    const headers = rateLimitHeaders(rate);
     const { data, errorResponse } = await parseJsonBody<{
       razorpay_payment_id?: unknown;
       razorpay_order_id?: unknown;
@@ -84,7 +100,8 @@ export async function POST(req: NextRequest) {
       message: "Payment verified and credits added successfully.",
       creditsAdded: plan.credits,
       totalCredits: updatedCredits,
-    });
+    },
+    { headers });
   } catch (error) {
     console.error("Razorpay Verification Endpoint Error:", error);
     return apiError("Internal server error", 500);

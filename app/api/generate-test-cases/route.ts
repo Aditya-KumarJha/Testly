@@ -13,6 +13,11 @@ import {
   toTrimmedString,
 } from "@/lib/api";
 import { getRequiredEnv } from "@/lib/env";
+import {
+  checkRateLimit,
+  rateLimitHeaders,
+  rateLimitResponse,
+} from "@/lib/rate-limit";
 
 const ALLOWED_EXTENSIONS = [".js", ".jsx", ".ts", ".tsx", ".json", ".md"];
 const MAX_FILES_TO_ANALYZE = 25;
@@ -215,6 +220,17 @@ async function readGithubFile({
 
 export async function POST(req: NextRequest) {
   try {
+    const rate = checkRateLimit(req, {
+      keyPrefix: "generate-test-cases",
+      limit: 10,
+      windowMs: 60_000,
+    });
+
+    if (!rate.allowed) {
+      return rateLimitResponse(rate);
+    }
+
+    const rateHeaders = rateLimitHeaders(rate);
     const { data, errorResponse } = await parseJsonBody<{
       userId?: unknown;
       repoId?: unknown;
@@ -455,7 +471,8 @@ Important rules:
       message: "Test cases generated successfully",
       count: insertedTestCases.length,
       testCases: insertedTestCases,
-    });
+    },
+    { headers: rateHeaders });
   } catch (error) {
     console.error("Generate test cases error:", error);
     return NextResponse.json(

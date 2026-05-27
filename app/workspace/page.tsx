@@ -1,10 +1,12 @@
 import WorkSpaceBody from "@/components/custom/WorkSpaceBody";
 import type { Metadata } from "next";
 import { Suspense } from "react";
+import { siteConfig } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Workspace",
   description: "Manage connected repositories and monitor AI-generated testing progress.",
+  keywords: [...siteConfig.keywords, "workspace", "test runs", "repository settings"],
   robots: {
     index: false,
     follow: false,

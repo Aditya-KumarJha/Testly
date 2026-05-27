@@ -15,6 +15,11 @@ import {
 } from "@/lib/api";
 import { getRequiredEnv } from "@/lib/env";
 import { publishToQueue } from "@/lib/rabbitmq";
+import {
+  checkRateLimit,
+  rateLimitHeaders,
+  rateLimitResponse,
+} from "@/lib/rate-limit";
 
 const MAX_FILE_CONTENT_LENGTH = 5000;
 
@@ -185,6 +190,18 @@ declare global {
 }
 
 export async function POST(req: NextRequest) {
+  const rate = checkRateLimit(req, {
+    keyPrefix: "test-cases-run",
+    limit: 5,
+    windowMs: 60_000,
+  });
+
+  if (!rate.allowed) {
+    return rateLimitResponse(rate);
+  }
+
+  const rateHeaders = rateLimitHeaders(rate);
+
   try {
     const { data, errorResponse } = await parseJsonBody<{
       testCaseId?: unknown;
@@ -533,7 +550,8 @@ DO NOT include any explanation.
         sessionUrl,
         logs,
         browserbaseScript: scriptText,
-      });
+      },
+      { headers: rateHeaders });
     } catch (execError) {
       console.error("Script execution error:", execError);
       logs.push(`[SYSTEM ERROR] Script execution failed: ${getErrorMessage(execError)}`);
@@ -604,7 +622,7 @@ DO NOT include any explanation.
           logs,
           browserbaseScript: scriptText,
         },
-        { status: 500 },
+        { status: 500, headers: rateHeaders },
       );
     } finally {
       if (browser) {
@@ -618,7 +636,7 @@ DO NOT include any explanation.
         success: false,
         error: getErrorMessage(error),
       },
-      { status: 500 },
+      { status: 500, headers: rateHeaders },
     );
   }
 }

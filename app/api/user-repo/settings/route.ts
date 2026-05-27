@@ -9,9 +9,25 @@ import {
   toInteger,
   toOptionalTrimmedString,
 } from "@/lib/api";
+import {
+  checkRateLimit,
+  rateLimitHeaders,
+  rateLimitResponse,
+} from "@/lib/rate-limit";
 
 export async function POST(req: NextRequest) {
   try {
+    const rate = checkRateLimit(req, {
+      keyPrefix: "user-repo-settings",
+      limit: 30,
+      windowMs: 60_000,
+    });
+
+    if (!rate.allowed) {
+      return rateLimitResponse(rate);
+    }
+
+    const headers = rateLimitHeaders(rate);
     const { data, errorResponse } = await parseJsonBody<{
       repoId?: unknown;
       targetDomain?: unknown;
@@ -40,7 +56,7 @@ export async function POST(req: NextRequest) {
       return apiError("Repository not found", 404);
     }
 
-    return apiSuccess(result[0]);
+    return apiSuccess(result[0], { headers });
   } catch (error) {
     console.error("Failed to update repository settings", error);
     return apiError("Failed to update repository settings", 500);
