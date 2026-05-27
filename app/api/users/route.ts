@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { users } from "@/db/schema";
 import { apiError, apiSuccess } from "@/lib/api";
+import { publishToQueue } from "@/lib/rabbitmq";
 
 export async function POST() {
   try {
@@ -30,6 +31,12 @@ export async function POST() {
           name: user.fullName ?? "New User",
         })
         .returning();
+
+      // Publish USER_LOGIN (Welcome) event to RabbitMQ
+      await publishToQueue("USER_LOGIN", {
+        email: newUser[0].email,
+        name: newUser[0].name || "New User",
+      });
 
       return apiSuccess(newUser[0]);
     }

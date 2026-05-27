@@ -14,6 +14,7 @@ import {
   toTrimmedString,
 } from "@/lib/api";
 import { getRequiredEnv } from "@/lib/env";
+import { publishToQueue } from "@/lib/rabbitmq";
 
 const MAX_FILE_CONTENT_LENGTH = 5000;
 
@@ -179,6 +180,10 @@ async function readGithubFile({
   } satisfies RepositoryFile;
 }
 
+declare global {
+  var batchResults: Record<string, any[]> | undefined;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { data, errorResponse } = await parseJsonBody<{
@@ -186,6 +191,9 @@ export async function POST(req: NextRequest) {
       baseUrl?: unknown;
       mode?: unknown;
       customPrompt?: unknown;
+      batchId?: unknown;
+      batchTotal?: unknown;
+      batchIndex?: unknown;
     }>(req);
 
     if (errorResponse || !data) {
@@ -196,6 +204,9 @@ export async function POST(req: NextRequest) {
     const baseUrl = toTrimmedString(data.baseUrl);
     const mode = data.mode === "cache" ? "cache" : "generate";
     const customPrompt = toTrimmedString(data.customPrompt);
+    const batchId = data.batchId ? toTrimmedString(data.batchId) : undefined;
+    const batchTotal = data.batchTotal ? Number(data.batchTotal) : undefined;
+    const batchIndex = data.batchIndex !== undefined ? Number(data.batchIndex) : undefined;
 
     if (!testCaseId || !baseUrl) {
       return apiError("testCaseId and baseUrl are required", 400);
@@ -240,12 +251,6 @@ export async function POST(req: NextRequest) {
     if (user.credits < requiredCredits) {
       return apiError("Not enough credits. Please purchase more credits first.", 402);
     }
-
-    const newCredits = Math.max(0, user.credits - requiredCredits);
-    await db
-      .update(users)
-      .set({ credits: newCredits })
-      .where(eq(users.id, user.id));
 
     let repoRecord = null;
     if (testCase.repoId) {
@@ -434,6 +439,13 @@ DO NOT include any explanation.
         throw new Error("Browserbase session connect URL missing");
       }
 
+      // Deduct credits now that the Browserbase session is successfully created and we are starting execution!
+      const newCredits = Math.max(0, user.credits - requiredCredits);
+      await db
+        .update(users)
+        .set({ credits: newCredits })
+        .where(eq(users.id, user.id));
+
       browser = await chromium.connectOverCDP(session.connectUrl);
       const context = browser.contexts()[0] ?? (await browser.newContext());
       const page = context.pages()[0] ?? (await context.newPage());
@@ -469,6 +481,51 @@ DO NOT include any explanation.
         })
         .where(eq(TestCasesTable.id, testCase.id));
 
+      // Compile result metadata
+      const runResult = {
+        testCase: {
+          id: testCase.id,
+          title: testCase.title,
+          priority: testCase.priority,
+          browserbaseScript: scriptText,
+          sessionId,
+          sessionUrl,
+        },
+        logs,
+        status: "passed",
+        repoName: testCase.repoName,
+        repoOwner: testCase.repoOwner,
+        branch: testCase.branch || "main",
+        targetRoute: testCase.targetRoute || "/",
+        creditsUsed: requiredCredits,
+        user: {
+          email: user.email,
+          name: user.name || "Testly User",
+        },
+      };
+
+      // Group runs in a batch if batchId is provided
+      if (batchId && batchTotal && batchTotal > 1) {
+        if (!global.batchResults) {
+          global.batchResults = {};
+        }
+        if (!global.batchResults[batchId]) {
+          global.batchResults[batchId] = [];
+        }
+        global.batchResults[batchId].push(runResult);
+
+        console.log(`[Batch] Added success to batch ${batchId}. Current size: ${global.batchResults[batchId].length}/${batchTotal}`);
+
+        if (global.batchResults[batchId].length === batchTotal) {
+          console.log(`[Batch] Batch ${batchId} completed! Publishing combined success event...`);
+          await publishToQueue("TEST_RUN_COMPLETED", global.batchResults[batchId]);
+          delete global.batchResults[batchId]; // Clean cache
+        }
+      } else {
+        // Single run - publish immediately as an array of 1
+        await publishToQueue("TEST_RUN_COMPLETED", [runResult]);
+      }
+
       return NextResponse.json({
         success: true,
         status: "passed",
@@ -491,6 +548,51 @@ DO NOT include any explanation.
           sessionUrl,
         })
         .where(eq(TestCasesTable.id, testCase.id));
+
+      // Compile result metadata
+      const runResult = {
+        testCase: {
+          id: testCase.id,
+          title: testCase.title,
+          priority: testCase.priority,
+          browserbaseScript: scriptText,
+          sessionId,
+          sessionUrl,
+        },
+        logs,
+        status: "failed",
+        repoName: testCase.repoName,
+        repoOwner: testCase.repoOwner,
+        branch: testCase.branch || "main",
+        targetRoute: testCase.targetRoute || "/",
+        creditsUsed: requiredCredits,
+        user: {
+          email: user.email,
+          name: user.name || "Testly User",
+        },
+      };
+
+      // Group runs in a batch if batchId is provided
+      if (batchId && batchTotal && batchTotal > 1) {
+        if (!global.batchResults) {
+          global.batchResults = {};
+        }
+        if (!global.batchResults[batchId]) {
+          global.batchResults[batchId] = [];
+        }
+        global.batchResults[batchId].push(runResult);
+
+        console.log(`[Batch] Added failure to batch ${batchId}. Current size: ${global.batchResults[batchId].length}/${batchTotal}`);
+
+        if (global.batchResults[batchId].length === batchTotal) {
+          console.log(`[Batch] Batch ${batchId} completed! Publishing combined failure event...`);
+          await publishToQueue("TEST_RUN_COMPLETED", global.batchResults[batchId]);
+          delete global.batchResults[batchId]; // Clean cache
+        }
+      } else {
+        // Single run - publish immediately as an array of 1
+        await publishToQueue("TEST_RUN_COMPLETED", [runResult]);
+      }
 
       return NextResponse.json(
         {

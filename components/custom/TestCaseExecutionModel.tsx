@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useContext } from "react";
+import { useState, useEffect, useContext, useRef } from "react";
 import {
   Dialog,
   DialogContent,
@@ -66,6 +66,7 @@ export default function TestExecutionModal({
   const [results, setResults] = useState<Record<number, RunResult>>({});
   const [selectedDetailId, setSelectedDetailId] = useState<number | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const batchIdRef = useRef("");
 
   // Advanced Options states
   const [executionMode, setExecutionMode] = useState<"cache" | "generate">(
@@ -168,12 +169,15 @@ export default function TestExecutionModal({
       }));
 
       try {
-        // Call run API with advanced flags
+        // Call run API with advanced flags and batch details
         const res = await axios.post("/api/test-cases/run", {
           testCaseId: tcId,
           baseUrl: baseUrl.trim(),
           mode: executionMode, // "cache" (direct run) or "generate" (regenerate)
           customPrompt: customPrompt.trim(),
+          batchId: batchIdRef.current || `single_${tcId}_${Date.now()}`,
+          batchTotal: testCases.length,
+          batchIndex: currentIdx,
         });
 
         const data = res.data;
@@ -254,6 +258,8 @@ export default function TestExecutionModal({
       };
     });
     setResults(resetResults);
+    // Initialize batch ID for this execution run
+    batchIdRef.current = `batch_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     setIsExecuting(true);
     setCurrentIdx(0);
     setSelectedDetailId(testCases[0].id);

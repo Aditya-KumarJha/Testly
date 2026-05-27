@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import crypto from "crypto";
 import { apiError, apiSuccess, parseJsonBody, toInteger, toTrimmedString } from "@/lib/api";
 import { getRequiredEnv } from "@/lib/env";
+import { publishToQueue } from "@/lib/rabbitmq";
 
 const PLANS = {
   basic: { price: 199, credits: 100 },
@@ -69,6 +70,15 @@ export async function POST(req: NextRequest) {
       .update(users)
       .set({ credits: updatedCredits })
       .where(eq(users.id, userId));
+
+    // Publish PAYMENT_CONFIRMED event to RabbitMQ
+    await publishToQueue("PAYMENT_CONFIRMED", {
+      email: user.email,
+      name: user.name || "Testly User",
+      planId,
+      creditsAdded: plan.credits,
+      totalCredits: updatedCredits,
+    });
 
     return apiSuccess({
       message: "Payment verified and credits added successfully.",

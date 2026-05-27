@@ -259,7 +259,7 @@ export async function POST(req: NextRequest) {
       return apiError("User not found", 404);
     }
 
-    const REQUIRED_CREDITS = 15; // Minimum required for at least one high priority case
+    const REQUIRED_CREDITS = 10; // Minimum required to generate at least one case
     if (user.credits < REQUIRED_CREDITS) {
       return apiError("Not enough credits. Please purchase more credits first.", 402);
     }
@@ -442,16 +442,7 @@ Important rules:
       )
       .returning();
 
-    let creditsToDeduct = 0;
-    insertedTestCases.forEach((tc) => {
-      if (tc.priority === "high") {
-        creditsToDeduct += 15;
-      } else if (tc.priority === "low") {
-        creditsToDeduct += 5;
-      } else {
-        creditsToDeduct += 10;
-      }
-    });
+    const creditsToDeduct = insertedTestCases.length * 10;
 
     const newCredits = Math.max(0, user.credits - creditsToDeduct);
     await db
