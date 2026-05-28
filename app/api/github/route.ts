@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { NextRequest } from "next/server";
-import { getRequiredEnv } from "@/lib/env";
+import { getGitHubRedirectUri, getRequiredEnv } from "@/lib/env";
 import {
   checkRateLimit,
   rateLimitResponse,
@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
 
   const params = new URLSearchParams({
     client_id: getRequiredEnv("GITHUB_CLIENT_ID"),
-    redirect_uri: getRequiredEnv("GITHUB_REDIRECT_URI"),
+    redirect_uri: getGitHubRedirectUri(),
     scope: "repo read:user",
   });
 

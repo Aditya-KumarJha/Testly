@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getRequiredEnv } from "@/lib/env";
+import { getGitHubRedirectUri, getRequiredEnv } from "@/lib/env";
 
 export async function GET(req: NextRequest) {
   try {
@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
         client_id: getRequiredEnv("GITHUB_CLIENT_ID"),
         client_secret: getRequiredEnv("GITHUB_CLIENT_SECRET"),
         code,
-        redirect_uri: getRequiredEnv("GITHUB_REDIRECT_URI"),
+        redirect_uri: getGitHubRedirectUri(),
       }),
     });
 

@@ -7,3 +7,8 @@ export function getRequiredEnv(name: string) {
 
   return value;
 }
+
+export function getGitHubRedirectUri() {
+  const baseUrl = getRequiredEnv("NEXT_PUBLIC_APP_URL");
+  return new URL("/api/github/callback", baseUrl).toString();
+}

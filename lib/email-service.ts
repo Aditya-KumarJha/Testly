@@ -1,5 +1,6 @@
 import { getResendClient } from "./resend";
 import { getRequiredEnv } from "./env";
+import { getSiteUrl } from "./site";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 
 /**
@@ -35,6 +36,7 @@ export async function processEmailQueueMessage(event: string, data: any): Promis
 async function sendWelcomeEmail(email: string, name: string) {
   const resend = getResendClient();
   const fromEmail = getRequiredEnv("RESEND_FROM");
+  const workspaceUrl = new URL("/workspace", getSiteUrl()).toString();
 
   const html = `
     <!DOCTYPE html>
@@ -100,7 +102,7 @@ async function sendWelcomeEmail(email: string, name: string) {
             </div>
             
             <div style="text-align: center; margin-top: 32px; margin-bottom: 8px;">
-              <a href="http://localhost:3000/workspace" class="cta-btn">Go to Dashboard</a>
+              <a href="${workspaceUrl}" class="cta-btn">Go to Dashboard</a>
             </div>
           </div>
           <div class="footer">
@@ -128,6 +130,7 @@ async function sendWelcomeEmail(email: string, name: string) {
 async function sendPaymentEmail(email: string, name: string, planId: string, creditsAdded: number, totalCredits: number) {
   const resend = getResendClient();
   const fromEmail = getRequiredEnv("RESEND_FROM");
+  const workspaceUrl = new URL("/workspace", getSiteUrl()).toString();
 
   const plansNames: Record<string, string> = {
     basic: "Starter Credit Package",
@@ -228,7 +231,7 @@ async function sendPaymentEmail(email: string, name: string, planId: string, cre
             </div>
             
             <div style="text-align: center; margin-top: 32px; margin-bottom: 8px;">
-              <a href="http://localhost:3000/workspace" class="cta-btn">Run Automated Tests Now</a>
+              <a href="${workspaceUrl}" class="cta-btn">Run Automated Tests Now</a>
             </div>
           </div>
           <div class="footer">
