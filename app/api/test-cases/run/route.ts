@@ -21,6 +21,8 @@ import {
   rateLimitResponse,
 } from "@/lib/rate-limit";
 
+export const runtime = "nodejs";
+
 const MAX_FILE_CONTENT_LENGTH = 5000;
 
 type RepositoryFile = {
